@@ -30,6 +30,10 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // The SPA is served from the same origin and authenticates with a
+        // session cookie, so API requests from it are stateful.
+        $middleware->statefulApi();
+
         $middleware->alias([
             'tenant' => IdentifyTenant::class,
             'role' => CheckRole::class,
