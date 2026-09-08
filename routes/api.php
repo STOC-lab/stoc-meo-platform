@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BillingController;
+use App\Http\Controllers\Api\V1\InvitationController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -10,9 +11,22 @@ Route::get('/user', function (Request $request) {
 })->middleware('auth:sanctum');
 
 Route::prefix('v1')->group(function () {
+    Route::post('auth/register', [AuthController::class, 'register'])
+        ->middleware('throttle:6,1')
+        ->name('api.v1.auth.register');
+
     Route::post('auth/login', [AuthController::class, 'login'])
         ->middleware('throttle:6,1')
         ->name('api.v1.auth.login');
+
+    // Invitations are opened from an emailed link, by someone who may have
+    // neither an account nor an organization yet.
+    Route::get('invitations/{token}', [InvitationController::class, 'show'])
+        ->name('api.v1.invitations.show');
+
+    Route::post('invitations/{token}/accept', [InvitationController::class, 'accept'])
+        ->middleware('throttle:10,1')
+        ->name('api.v1.invitations.accept');
 
     // The switcher needs the membership list before an organization can be
     // chosen, so these sit outside the tenant middleware.
@@ -32,6 +46,9 @@ Route::prefix('v1')
 
             Route::get('billing/portal', [BillingController::class, 'portal'])
                 ->name('api.v1.billing.portal');
+
+            Route::post('organizations/{organization}/invitations', [InvitationController::class, 'store'])
+                ->name('api.v1.organizations.invitations.store');
         });
     });
 

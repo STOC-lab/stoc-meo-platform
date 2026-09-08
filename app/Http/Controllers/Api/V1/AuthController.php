@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\OrganizationRegistrar;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -16,6 +19,28 @@ use Illuminate\Validation\ValidationException;
  */
 class AuthController extends Controller
 {
+    /**
+     * Register a user together with the organization they will own.
+     */
+    public function register(Request $request, OrganizationRegistrar $registrar): JsonResponse
+    {
+        $this->requireSession($request);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
+            'password' => ['required', 'confirmed', Password::defaults()],
+            'organization_name' => ['required', 'string', 'max:255'],
+        ]);
+
+        $user = $registrar->register($data['name'], $data['email'], $data['password'], $data['organization_name']);
+
+        Auth::login($user);
+        $request->session()->regenerate();
+
+        return response()->json($this->profile($user), 201);
+    }
+
     /**
      * Log in and start a session.
      */

@@ -9,15 +9,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { errorMessage } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
-import { useOrganizationStore } from '@/stores/organization';
 
-export default function Login() {
-    const login = useAuthStore((state) => state.login);
+export default function Register() {
+    const register = useAuthStore((state) => state.register);
     const navigate = useNavigate();
 
+    const [name, setName] = useState('');
     const [email, setEmail] = useState('');
+    const [organizationName, setOrganizationName] = useState('');
     const [password, setPassword] = useState('');
-    const [remember, setRemember] = useState(false);
+    const [passwordConfirmation, setPasswordConfirmation] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
 
@@ -27,15 +28,17 @@ export default function Login() {
         setSubmitting(true);
 
         try {
-            await login(email, password, remember);
-
-            // A single membership is selected during login; anything else has
-            // to be chosen first.
-            navigate(useOrganizationStore.getState().currentId === null ? '/organizations' : '/dashboard', {
-                replace: true,
+            await register({
+                name,
+                email,
+                organization_name: organizationName,
+                password,
+                password_confirmation: passwordConfirmation,
             });
+
+            navigate('/dashboard', { replace: true });
         } catch (exception) {
-            setError(errorMessage(exception, 'ログインに失敗しました。'));
+            setError(errorMessage(exception, '登録に失敗しました。'));
         } finally {
             setSubmitting(false);
         }
@@ -43,13 +46,13 @@ export default function Login() {
 
     return (
         <main className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
-            <Card className="w-full max-w-sm">
+            <Card className="w-full max-w-md">
                 <CardHeader>
                     <div className="flex items-center gap-2">
                         <Rocket className="size-5 text-primary" aria-hidden="true" />
-                        <CardTitle>STOC MEO にログイン</CardTitle>
+                        <CardTitle>アカウントを作成</CardTitle>
                     </div>
-                    <CardDescription>登録済みのメールアドレスとパスワードを入力してください。</CardDescription>
+                    <CardDescription>組織を作成し、オーナーとして利用を開始します。</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
@@ -61,15 +64,39 @@ export default function Login() {
                         ) : null}
 
                         <div className="flex flex-col gap-2">
+                            <Label htmlFor="organization_name">組織名</Label>
+                            <Input
+                                id="organization_name"
+                                name="organization_name"
+                                required
+                                autoComplete="organization"
+                                placeholder="株式会社ストック"
+                                value={organizationName}
+                                onChange={(event) => setOrganizationName(event.target.value)}
+                            />
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="name">お名前</Label>
+                            <Input
+                                id="name"
+                                name="name"
+                                required
+                                autoComplete="name"
+                                value={name}
+                                onChange={(event) => setName(event.target.value)}
+                            />
+                        </div>
+
+                        <div className="flex flex-col gap-2">
                             <Label htmlFor="email">メールアドレス</Label>
                             <Input
                                 id="email"
-                                type="email"
                                 name="email"
-                                autoComplete="email"
+                                type="email"
                                 required
+                                autoComplete="email"
                                 value={email}
-                                aria-invalid={error !== null}
                                 onChange={(event) => setEmail(event.target.value)}
                             />
                         </div>
@@ -78,35 +105,37 @@ export default function Login() {
                             <Label htmlFor="password">パスワード</Label>
                             <Input
                                 id="password"
-                                type="password"
                                 name="password"
-                                autoComplete="current-password"
+                                type="password"
                                 required
+                                autoComplete="new-password"
                                 value={password}
-                                aria-invalid={error !== null}
                                 onChange={(event) => setPassword(event.target.value)}
                             />
                         </div>
 
-                        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <input
-                                type="checkbox"
-                                className="size-4 rounded border-input"
-                                checked={remember}
-                                onChange={(event) => setRemember(event.target.checked)}
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="password_confirmation">パスワード（確認）</Label>
+                            <Input
+                                id="password_confirmation"
+                                name="password_confirmation"
+                                type="password"
+                                required
+                                autoComplete="new-password"
+                                value={passwordConfirmation}
+                                onChange={(event) => setPasswordConfirmation(event.target.value)}
                             />
-                            ログイン状態を保持する
-                        </label>
+                        </div>
 
                         <Button type="submit" disabled={submitting}>
                             {submitting ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
-                            ログイン
+                            登録する
                         </Button>
 
                         <p className="text-center text-sm text-muted-foreground">
-                            アカウントをお持ちでない場合は{' '}
-                            <Link to="/register" className="text-foreground underline underline-offset-4">
-                                新規登録
+                            すでにアカウントをお持ちですか？{' '}
+                            <Link to="/login" className="text-foreground underline underline-offset-4">
+                                ログイン
                             </Link>
                         </p>
                     </form>

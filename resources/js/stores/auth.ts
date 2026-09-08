@@ -6,10 +6,19 @@ import type { Organization, Profile, User } from '@/types/api';
 
 type AuthStatus = 'idle' | 'loading' | 'authenticated' | 'guest';
 
+export interface RegistrationPayload {
+    name: string;
+    email: string;
+    password: string;
+    password_confirmation: string;
+    organization_name: string;
+}
+
 interface AuthState {
     user: User | null;
     organizations: Organization[];
     status: AuthStatus;
+    register: (payload: RegistrationPayload) => Promise<void>;
     login: (email: string, password: string, remember: boolean) => Promise<void>;
     logout: () => Promise<void>;
     loadProfile: () => Promise<void>;
@@ -44,6 +53,14 @@ export const useAuthStore = create<AuthState>()((set) => ({
     user: null,
     organizations: [],
     status: 'idle',
+
+    register: async (payload) => {
+        await ensureCsrfCookie();
+
+        const { data } = await api.post<Profile>('auth/register', payload);
+
+        set(applyProfile(data));
+    },
 
     login: async (email, password, remember) => {
         await ensureCsrfCookie();
