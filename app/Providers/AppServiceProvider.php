@@ -15,6 +15,10 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->scoped(Tenancy::class);
+
+        // The webhook route is declared in bootstrap/app.php so it can point at
+        // this application's controller.
+        Cashier::ignoreRoutes();
     }
 
     /**

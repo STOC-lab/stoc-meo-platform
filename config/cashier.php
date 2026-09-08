@@ -49,7 +49,14 @@ return [
     'webhook' => [
         'secret' => env('STRIPE_WEBHOOK_SECRET'),
         'tolerance' => env('STRIPE_WEBHOOK_TOLERANCE', 300),
-        'events' => WebhookCommand::DEFAULT_EVENTS,
+        // Cashier's defaults keep the subscriptions table in step; the three
+        // added here drive StripeWebhookController's organization bookkeeping.
+        // `php artisan cashier:webhook` registers exactly this list.
+        'events' => array_values(array_unique(array_merge(WebhookCommand::DEFAULT_EVENTS, [
+            'checkout.session.completed',
+            'invoice.paid',
+            'invoice.payment_failed',
+        ]))),
     ],
 
     /*
