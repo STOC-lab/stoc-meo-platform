@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BillingController;
 use App\Http\Controllers\Api\V1\BrandController;
 use App\Http\Controllers\Api\V1\CompetitorController;
+use App\Http\Controllers\Api\V1\ContentCampaignController;
 use App\Http\Controllers\Api\V1\GbpPerformanceController;
 use App\Http\Controllers\Api\V1\GbpPostController;
 use App\Http\Controllers\Api\V1\GoogleConnectionController;
@@ -153,11 +154,54 @@ Route::prefix('v1')
                         ->name('api.v1.reviews.reply');
                 });
 
+                // Asking a model for a draft reply spends the plan's monthly
+                // allowance, so it is gated on the plan including AI replies
+                // at all. Approving one is what actually speaks to a customer.
+                Route::middleware(['role:staff', 'feature:review.ai_reply.enabled'])->group(function () {
+                    Route::post('reviews/{review}/ai-reply', [ReviewController::class, 'aiReply'])
+                        ->name('api.v1.reviews.ai-reply');
+
+                    Route::post('reviews/{review}/ai-reply/approve', [ReviewController::class, 'approveAiReply'])
+                        ->name('api.v1.reviews.ai-reply.approve');
+                });
+
                 // Publishing spends the plan's monthly allowance, so it is a
                 // store manager's call and is gated on the plan granting any.
                 Route::middleware(['role:location_admin', 'feature:gbp.post.monthly_limit'])->group(function () {
                     Route::post('gbp-posts', [GbpPostController::class, 'store'])
                         ->name('api.v1.gbp-posts.store');
+                });
+            });
+
+        // Content campaigns turn one theme into posts across several
+        // channels. Reading what is planned is open to every member; writing
+        // one and approving what the model wrote are not.
+        Route::prefix('locations/{location}')
+            ->scopeBindings()
+            ->group(function () {
+                Route::middleware('role:viewer')->group(function () {
+                    Route::get('campaigns', [ContentCampaignController::class, 'index'])
+                        ->name('api.v1.campaigns.index');
+
+                    Route::get('campaigns/{campaign}', [ContentCampaignController::class, 'show'])
+                        ->name('api.v1.campaigns.show');
+                });
+
+                Route::middleware('role:location_admin')->group(function () {
+                    Route::post('campaigns', [ContentCampaignController::class, 'store'])
+                        ->name('api.v1.campaigns.store');
+
+                    Route::match(['put', 'patch'], 'campaigns/{campaign}', [ContentCampaignController::class, 'update'])
+                        ->name('api.v1.campaigns.update');
+
+                    Route::delete('campaigns/{campaign}', [ContentCampaignController::class, 'destroy'])
+                        ->name('api.v1.campaigns.destroy');
+
+                    Route::post('campaigns/{campaign}/generate', [ContentCampaignController::class, 'generate'])
+                        ->name('api.v1.campaigns.generate');
+
+                    Route::post('campaigns/{campaign}/posts/{post}/approve', [ContentCampaignController::class, 'approve'])
+                        ->name('api.v1.campaigns.posts.approve');
                 });
             });
 

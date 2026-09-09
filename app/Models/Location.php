@@ -81,6 +81,22 @@ class Location extends Model
     }
 
     /**
+     * @return HasOne<InstagramAccount, $this>
+     */
+    public function instagramAccount(): HasOne
+    {
+        return $this->hasOne(InstagramAccount::class);
+    }
+
+    /**
+     * @return HasMany<ContentCampaign, $this>
+     */
+    public function campaigns(): HasMany
+    {
+        return $this->hasMany(ContentCampaign::class);
+    }
+
+    /**
      * @return HasMany<Review, $this>
      */
     public function reviews(): HasMany

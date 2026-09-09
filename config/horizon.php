@@ -283,6 +283,39 @@ return [
             'timeout' => 330,
             'nice' => 0,
         ],
+
+        // Text generation. A model call is slow but cheap to hold, and a queue
+        // of its own keeps a burst of drafts from delaying the calls that
+        // publish them.
+        'supervisor-ai' => [
+            'connection' => 'redis',
+            'queue' => ['ai'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 192,
+            'tries' => 1,
+            'timeout' => 210,
+            'nice' => 0,
+        ],
+
+        // Publishing to the social channels. Instagram's two-step publish is
+        // the slowest thing here, which sets the timeout.
+        'supervisor-social' => [
+            'connection' => 'redis',
+            'queue' => ['social'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 192,
+            'tries' => 1,
+            'timeout' => 330,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -316,6 +349,18 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+
+            'supervisor-ai' => [
+                'maxProcesses' => 5,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
+
+            'supervisor-social' => [
+                'maxProcesses' => 3,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
         ],
 
         'local' => [
@@ -337,6 +382,14 @@ return [
 
             'supervisor-gbp' => [
                 'maxProcesses' => 2,
+            ],
+
+            'supervisor-ai' => [
+                'maxProcesses' => 2,
+            ],
+
+            'supervisor-social' => [
+                'maxProcesses' => 1,
             ],
         ],
     ],

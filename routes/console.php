@@ -47,3 +47,11 @@ Schedule::command('gbp:refresh-tokens')
     ->timezone('Asia/Tokyo')
     ->withoutOverlapping()
     ->onOneServer();
+
+// Recurring campaigns post to Instagram once a week, in the middle of the
+// morning when a feed post is actually seen.
+Schedule::command('instagram:publish-weekly')
+    ->weeklyOn(2, '10:00')
+    ->timezone('Asia/Tokyo')
+    ->withoutOverlapping()
+    ->onOneServer();

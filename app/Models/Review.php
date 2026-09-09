@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\AiReplyStatus;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -24,6 +25,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'reply',
     'replied_at',
     'reviewed_at',
+    'ai_reply',
+    'ai_reply_status',
+    'ai_reply_model',
+    'ai_reply_generated_at',
+    'ai_reply_approved_by_user_id',
+    'ai_reply_approved_at',
+    'ai_reply_error',
 ])]
 class Review extends Model
 {
@@ -38,6 +46,9 @@ class Review extends Model
             'rating' => 'integer',
             'replied_at' => 'datetime',
             'reviewed_at' => 'datetime',
+            'ai_reply_status' => AiReplyStatus::class,
+            'ai_reply_generated_at' => 'datetime',
+            'ai_reply_approved_at' => 'datetime',
         ];
     }
 

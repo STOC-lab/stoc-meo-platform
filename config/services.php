@@ -54,6 +54,15 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI'),
     ],
 
+    // Instagram publishing goes through Meta's Graph API. Publishing needs an
+    // Instagram professional account linked to a Facebook page, and an image
+    // at a URL Meta can fetch — it does not accept an upload.
+    'instagram' => [
+        'base_url' => env('INSTAGRAM_BASE_URL', 'https://graph.facebook.com'),
+        'version' => env('INSTAGRAM_API_VERSION', 'v21.0'),
+        'timeout' => env('INSTAGRAM_TIMEOUT', 60),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

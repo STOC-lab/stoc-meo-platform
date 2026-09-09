@@ -3,6 +3,9 @@
 namespace App\Providers;
 
 use App\Models\Organization;
+use App\Services\AI\AIProviderFactory;
+use App\Services\AI\ClaudeProvider;
+use App\Services\Instagram\InstagramClient;
 use App\Services\Ranking\DataForSEOProvider;
 use App\Services\Ranking\FallbackProvider;
 use App\Services\Ranking\RankProviderRouter;
@@ -29,6 +32,31 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(ReportPdfRenderer::class, fn ($app) => new ReportPdfRenderer(
             (array) $app['config']->get('reports.font', []),
+        ));
+
+        $this->registerAiProviders();
+
+        $this->app->singleton(InstagramClient::class, fn ($app) => new InstagramClient(
+            $app->make(HttpFactory::class),
+            (array) $app['config']->get('services.instagram', []),
+        ));
+    }
+
+    /**
+     * The product asks for generated text in terms of what it needs rather
+     * than who supplies it, so the choice sits behind the factory.
+     */
+    protected function registerAiProviders(): void
+    {
+        $this->app->singleton(ClaudeProvider::class, fn ($app) => new ClaudeProvider(
+            $app->make(HttpFactory::class),
+            (array) $app['config']->get('ai.claude', []),
+        ));
+
+        $this->app->singleton(AIProviderFactory::class, fn ($app) => new AIProviderFactory(
+            $app,
+            [ClaudeProvider::NAME => ClaudeProvider::class],
+            (string) $app['config']->get('ai.default', ClaudeProvider::NAME),
         ));
     }
 

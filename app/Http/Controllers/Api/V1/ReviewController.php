@@ -2,13 +2,20 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\AiReplyStatus;
+use App\Enums\Feature;
+use App\Exceptions\QuotaExceededException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ReplyToReviewRequest;
+use App\Jobs\AiReplyGenerationJob;
+use App\Jobs\PublishReviewReplyJob;
 use App\Models\Location;
 use App\Models\Review;
+use App\Services\FeatureResolver;
 use App\Services\GBP\Exceptions\GBPAuthenticationException;
 use App\Services\GBP\Exceptions\GBPException;
 use App\Services\GBP\GBPClientFactory;
+use App\Services\UsageTracker;
 use App\Support\Tenancy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Collection;
@@ -25,6 +32,8 @@ class ReviewController extends Controller
     public function __construct(
         protected Tenancy $tenancy,
         protected GBPClientFactory $clients,
+        protected FeatureResolver $features,
+        protected UsageTracker $usage,
     ) {}
 
     public function index(Location $location): JsonResponse
@@ -86,6 +95,101 @@ class ReviewController extends Controller
     }
 
     /**
+     * Ask the model for a draft reply.
+     *
+     * Nothing is sent to Google here — the draft waits for a person, unless
+     * the plan includes automatic replies, in which case the generation job
+     * hands it straight on.
+     *
+     * @throws QuotaExceededException
+     */
+    public function aiReply(Location $location, Review $review): JsonResponse
+    {
+        $this->authorizeLocation($location);
+        $this->authorize('reply', $review);
+
+        abort_if(
+            $review->ai_reply_status === AiReplyStatus::Generating,
+            409,
+            'この口コミの返信文はすでに生成中です。',
+        );
+
+        $this->guardAiReplyAllowance();
+
+        // A draft that failed or was already published starts again from
+        // nothing, which is what the generation job's claim expects.
+        $review->forceFill([
+            'ai_reply_status' => null,
+            'ai_reply_error' => null,
+        ])->save();
+
+        AiReplyGenerationJob::dispatch($review);
+
+        return response()->json([
+            'review' => $this->present($review),
+            'allowance' => $this->aiReplyAllowance(),
+        ], 202);
+    }
+
+    /**
+     * Approve the draft and send it to Google.
+     */
+    public function approveAiReply(Location $location, Review $review): JsonResponse
+    {
+        $this->authorizeLocation($location);
+        $this->authorize('reply', $review);
+
+        abort_unless(
+            $review->ai_reply_status?->needsApproval() === true,
+            422,
+            'この返信文は承認待ちではありません。',
+        );
+
+        $review->forceFill([
+            'ai_reply_status' => AiReplyStatus::Approved,
+            'ai_reply_approved_by_user_id' => request()->user()->getKey(),
+            'ai_reply_approved_at' => now(),
+        ])->save();
+
+        PublishReviewReplyJob::dispatch($review);
+
+        return response()->json(['review' => $this->present($review)], 202);
+    }
+
+    /**
+     * This only checks; the generation job is what moves the counter, once the
+     * draft has actually been claimed.
+     *
+     * @throws QuotaExceededException
+     */
+    protected function guardAiReplyAllowance(): void
+    {
+        $limit = $this->features->limit(Feature::ReviewAiReplyMonthlyLimit);
+
+        if ($limit === null) {
+            return;
+        }
+
+        $used = $this->usage->used(Feature::ReviewAiReplyMonthlyLimit);
+
+        if ($used >= $limit) {
+            throw QuotaExceededException::for(Feature::ReviewAiReplyMonthlyLimit, $limit, $used);
+        }
+    }
+
+    /**
+     * @return array<string, int|null>
+     */
+    protected function aiReplyAllowance(): array
+    {
+        return [
+            'limit' => $this->features->limit(Feature::ReviewAiReplyMonthlyLimit),
+            'used' => $this->usage->used(Feature::ReviewAiReplyMonthlyLimit),
+            'remaining' => $this->usage->remaining(Feature::ReviewAiReplyMonthlyLimit),
+        ];
+    }
+
+    /**
      * Route model binding resolves the store front before the tenant is known,
      * so it can be one from another organization. Answer as though it does not
      * exist rather than confirming it does.
@@ -121,6 +225,13 @@ class ReviewController extends Controller
             'answered' => $review->isAnswered(),
             'replied_at' => $review->replied_at?->toIso8601String(),
             'reviewed_at' => $review->reviewed_at?->toIso8601String(),
+            'ai_reply' => $review->ai_reply,
+            'ai_reply_status' => $review->ai_reply_status?->value,
+            'ai_reply_status_label' => $review->ai_reply_status?->label(),
+            'ai_reply_awaiting_approval' => $review->ai_reply_status?->needsApproval() === true,
+            'ai_reply_model' => $review->ai_reply_model,
+            'ai_reply_error' => $review->ai_reply_error,
+            'ai_reply_generated_at' => $review->ai_reply_generated_at?->toIso8601String(),
         ];
     }
 }
