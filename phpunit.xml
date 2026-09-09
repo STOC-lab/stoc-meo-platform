@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
-         bootstrap="vendor/autoload.php"
+         bootstrap="tests/bootstrap.php"
          colors="true"
 >
     <testsuites>
@@ -22,14 +22,21 @@
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
-        <env name="CACHE_STORE" value="array"/>
+        <!--
+            force is what makes these stick: a plain <env> yields to a variable
+            already in the environment, so a CI job exporting CACHE_STORE or
+            QUEUE_CONNECTION would silently move the suite onto shared, durable
+            drivers. Rate limiter state would then survive from one test to the
+            next, and queued notifications would never be delivered.
+        -->
+        <env name="CACHE_STORE" value="array" force="true"/>
         <!-- Tests run on MySQL to match CI; stoc_meo_test is wiped by every run. -->
         <env name="DB_CONNECTION" value="mysql"/>
         <env name="DB_DATABASE" value="stoc_meo_test"/>
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
-        <env name="QUEUE_CONNECTION" value="sync"/>
-        <env name="SESSION_DRIVER" value="array"/>
+        <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="SESSION_DRIVER" value="array" force="true"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

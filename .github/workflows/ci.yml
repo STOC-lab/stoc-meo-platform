@@ -84,9 +84,9 @@ jobs:
       REDIS_CLIENT: predis
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: 6379
-      CACHE_STORE: redis
-      SESSION_DRIVER: redis
-      QUEUE_CONNECTION: redis
+      # The cache, session and queue drivers the suite runs on are phpunit.xml's
+      # to set: it needs an isolated cache per test and a synchronous queue.
+      # Exporting them here would override it and break test isolation.
 
     steps:
       - uses: actions/checkout@v4
