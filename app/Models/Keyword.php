@@ -26,6 +26,17 @@ class Keyword extends Model
     use BelongsToTenant, HasFactory;
 
     /**
+     * Tracking starts on. The column carries the same default, but a model
+     * that has only just been created never read it back, so without this the
+     * response to a create would report is_active as null.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'is_active' => true,
+    ];
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

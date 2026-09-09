@@ -127,6 +127,7 @@ class KeywordCrudTest extends TestCase
             ->postJson($this->url(), ['keyword' => '渋谷 カフェ'])
             ->assertCreated()
             ->assertJsonPath('keyword.keyword', '渋谷 カフェ')
+            ->assertJsonPath('keyword.is_active', true)
             ->assertJsonPath('allowance.remaining', 2);
 
         $this->assertDatabaseHas('keywords', [
