@@ -350,4 +350,77 @@ class InvitationTest extends TestCase
             ->assertOk()
             ->assertJsonPath('invitation.requires_registration', false);
     }
+
+    public function test_an_admin_lists_the_outstanding_invitations(): void
+    {
+        Invitation::factory()->create([
+            'organization_id' => $this->organization->id,
+            'email' => 'pending@example.com',
+        ]);
+        Invitation::factory()->accepted()->create([
+            'organization_id' => $this->organization->id,
+            'email' => 'joined@example.com',
+        ]);
+        Invitation::factory()->create([
+            'organization_id' => Organization::factory()->create()->id,
+            'email' => 'elsewhere@example.com',
+        ]);
+
+        $this->actingAs($this->member('admin'))
+            ->getJson("/api/v1/organizations/{$this->organization->id}/invitations")
+            ->assertOk()
+            ->assertJsonCount(1, 'invitations')
+            ->assertJsonPath('invitations.0.email', 'pending@example.com');
+    }
+
+    public function test_an_editor_cannot_list_the_invitations(): void
+    {
+        $this->actingAs($this->member('editor'))
+            ->getJson("/api/v1/organizations/{$this->organization->id}/invitations")
+            ->assertForbidden();
+    }
+
+    public function test_an_admin_revokes_an_invitation_and_the_link_stops_working(): void
+    {
+        [$plain, $hashed] = Invitation::generateToken();
+
+        $invitation = Invitation::factory()->create([
+            'organization_id' => $this->organization->id,
+            'token' => $hashed,
+        ]);
+
+        $this->actingAs($this->member('admin'))
+            ->deleteJson("/api/v1/organizations/{$this->organization->id}/invitations/{$invitation->id}")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('invitations', ['id' => $invitation->id]);
+
+        $this->getJson("/api/v1/invitations/{$plain}")->assertNotFound();
+    }
+
+    public function test_an_accepted_invitation_cannot_be_revoked(): void
+    {
+        $invitation = Invitation::factory()->accepted()->create([
+            'organization_id' => $this->organization->id,
+        ]);
+
+        $this->actingAs($this->member('admin'))
+            ->deleteJson("/api/v1/organizations/{$this->organization->id}/invitations/{$invitation->id}")
+            ->assertStatus(422);
+
+        $this->assertDatabaseHas('invitations', ['id' => $invitation->id]);
+    }
+
+    public function test_an_invitation_of_another_organization_cannot_be_revoked(): void
+    {
+        $foreign = Invitation::factory()->create([
+            'organization_id' => Organization::factory()->create()->id,
+        ]);
+
+        $this->actingAs($this->member('admin'))
+            ->deleteJson("/api/v1/organizations/{$this->organization->id}/invitations/{$foreign->id}")
+            ->assertNotFound();
+
+        $this->assertDatabaseHas('invitations', ['id' => $foreign->id]);
+    }
 }

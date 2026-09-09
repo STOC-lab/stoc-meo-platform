@@ -8,9 +8,9 @@ use App\Models\Invitation;
 use App\Models\Organization;
 use App\Models\User;
 use App\Notifications\OrganizationInvitationNotification;
-use App\Support\Tenancy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
@@ -24,14 +24,34 @@ use Illuminate\Validation\ValidationException;
  */
 class InvitationController extends Controller
 {
-    public function __construct(protected Tenancy $tenancy) {}
+    /**
+     * The invitations that are still outstanding, newest first. Accepted ones
+     * are left out: the invitee shows up in the member list instead.
+     */
+    public function index(Organization $organization): JsonResponse
+    {
+        $this->authorize('viewInvitations', $organization);
+
+        $invitations = Invitation::query()
+            ->whereNull('accepted_at')
+            ->with(['organization', 'inviter'])
+            ->latest()
+            ->get();
+
+        return response()->json([
+            'invitations' => $invitations
+                ->map(fn (Invitation $invitation) => $this->present($invitation))
+                ->all(),
+        ]);
+    }
 
     /**
      * Invite an address to the active organization.
      */
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, Organization $organization): JsonResponse
     {
-        $organization = $this->tenancy->organization();
+        $this->authorize('manageInvitations', $organization);
+
         $inviter = $request->user();
 
         $data = $request->validate([
@@ -83,6 +103,22 @@ class InvitationController extends Controller
         return response()->json([
             'invitation' => $this->present($invitation),
         ], 201);
+    }
+
+    /**
+     * Withdraw an outstanding invitation, so its link stops working.
+     */
+    public function destroy(Organization $organization, Invitation $invitation): Response
+    {
+        $this->authorize('manageInvitations', $organization);
+
+        if ($invitation->isAccepted()) {
+            abort(422, 'この招待は既に承諾されているため取り消せません。');
+        }
+
+        $invitation->delete();
+
+        return response()->noContent();
     }
 
     /**
