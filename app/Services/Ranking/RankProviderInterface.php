@@ -11,6 +11,10 @@ use App\Models\Keyword;
  * API is down, the credentials are wrong, the response is unreadable — throws
  * RankProviderException so the router can try the next one. Answering "the
  * store front is not in the results" is a successful answer, not a failure.
+ *
+ * A check may name the point it is run from, which is what a heatmap varies
+ * between its grid points. A provider that cannot search from a coordinate is
+ * free to ignore it and answer for its configured region.
  */
 interface RankProviderInterface
 {
@@ -27,5 +31,5 @@ interface RankProviderInterface
     /**
      * @throws RankProviderException
      */
-    public function fetch(Keyword $keyword): RankResult;
+    public function fetch(Keyword $keyword, ?GeoPoint $from = null): RankResult;
 }

@@ -25,7 +25,11 @@ class FallbackProvider implements RankProviderInterface
         return true;
     }
 
-    public function fetch(Keyword $keyword): RankResult
+    /**
+     * The point the check was meant to run from makes no difference to an
+     * answer that is already "nothing was found".
+     */
+    public function fetch(Keyword $keyword, ?GeoPoint $from = null): RankResult
     {
         return RankResult::notFound($this->name(), $this->searchUrl($keyword));
     }

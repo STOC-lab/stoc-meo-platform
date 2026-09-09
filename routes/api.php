@@ -3,6 +3,8 @@
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BillingController;
 use App\Http\Controllers\Api\V1\BrandController;
+use App\Http\Controllers\Api\V1\CompetitorController;
+use App\Http\Controllers\Api\V1\HeatmapController;
 use App\Http\Controllers\Api\V1\InvitationController;
 use App\Http\Controllers\Api\V1\KeywordController;
 use App\Http\Controllers\Api\V1\LocationController;
@@ -79,6 +81,49 @@ Route::prefix('v1')
 
                     Route::delete('keywords/{keyword}', [KeywordController::class, 'destroy'])
                         ->name('api.v1.keywords.destroy');
+                });
+            });
+
+        // The two heatmap grids are entitled separately, so the group carries
+        // no blanket feature gate: which grid a plan includes is checked
+        // against the size actually asked for, and reading past runs stays
+        // open so a plan change does not hide the maps already paid for.
+        Route::prefix('locations/{location}')
+            ->scopeBindings()
+            ->group(function () {
+                Route::middleware('role:viewer')->group(function () {
+                    Route::get('heatmaps', [HeatmapController::class, 'index'])
+                        ->name('api.v1.heatmaps.index');
+
+                    Route::get('heatmaps/{heatmapRun}', [HeatmapController::class, 'show'])
+                        ->name('api.v1.heatmaps.show');
+                });
+
+                // A run spends the plan's monthly allowance, so asking for one
+                // is a store manager's call.
+                Route::middleware('role:location_admin')->group(function () {
+                    Route::post('heatmaps', [HeatmapController::class, 'store'])
+                        ->name('api.v1.heatmaps.store');
+                });
+            });
+
+        // Competitor tracking is one allowance rather than two, so the whole
+        // group is gated on the plan granting it at all.
+        Route::prefix('locations/{location}')
+            ->middleware('feature:competitor.limit')
+            ->scopeBindings()
+            ->group(function () {
+                Route::middleware('role:viewer')->group(function () {
+                    Route::get('competitors', [CompetitorController::class, 'index'])
+                        ->name('api.v1.competitors.index');
+                });
+
+                Route::middleware('role:location_admin')->group(function () {
+                    Route::post('competitors', [CompetitorController::class, 'store'])
+                        ->name('api.v1.competitors.store');
+
+                    Route::delete('competitors/{competitor}', [CompetitorController::class, 'destroy'])
+                        ->name('api.v1.competitors.destroy');
                 });
             });
 

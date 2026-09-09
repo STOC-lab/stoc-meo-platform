@@ -229,6 +229,25 @@ return [
             'timeout' => 180,
             'nice' => 0,
         ],
+
+        // A heatmap is 25 or 49 searches inside a single job, so one of these
+        // occupies a worker for far longer than a rank check does. It gets its
+        // own supervisor rather than sharing the rankings queue, where a
+        // manually requested map would otherwise sit behind the whole nightly
+        // sweep. The timeout allows for every point of the widest grid.
+        'supervisor-heatmap' => [
+            'connection' => 'redis',
+            'queue' => ['heatmap'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 192,
+            'tries' => 1,
+            'timeout' => 1830,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -244,6 +263,12 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+
+            'supervisor-heatmap' => [
+                'maxProcesses' => 3,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
         ],
 
         'local' => [
@@ -253,6 +278,10 @@ return [
 
             'supervisor-rankings' => [
                 'maxProcesses' => 2,
+            ],
+
+            'supervisor-heatmap' => [
+                'maxProcesses' => 1,
             ],
         ],
     ],

@@ -39,6 +39,9 @@ return [
         'location_name' => env('DATAFORSEO_LOCATION_NAME', 'Japan'),
         'language_code' => env('DATAFORSEO_LANGUAGE_CODE', 'ja'),
         'depth' => env('DATAFORSEO_DEPTH', 100),
+        // The map zoom a heatmap's grid points are searched at, which
+        // decides how much ground each one sees.
+        'zoom' => env('DATAFORSEO_ZOOM', 14),
         'timeout' => env('DATAFORSEO_TIMEOUT', 30),
     ],
 

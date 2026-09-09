@@ -20,7 +20,7 @@ class RankProviderRouter
     /**
      * @throws RankProviderException
      */
-    public function fetch(Keyword $keyword): RankResult
+    public function fetch(Keyword $keyword, ?GeoPoint $from = null): RankResult
     {
         foreach ($this->providers as $provider) {
             if (! $provider->isAvailable()) {
@@ -28,7 +28,7 @@ class RankProviderRouter
             }
 
             try {
-                return $provider->fetch($keyword);
+                return $provider->fetch($keyword, $from);
             } catch (RankProviderException $e) {
                 // Losing one provider is expected; losing all of them is not,
                 // so each attempt is recorded and the next one is tried.

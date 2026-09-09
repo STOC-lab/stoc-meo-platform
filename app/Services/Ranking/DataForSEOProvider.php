@@ -21,6 +21,11 @@ use Throwable;
  * Sandbox mode swaps the host for DataForSEO's sandbox, which answers with the
  * same shape at no cost. It is the default until live credentials are in
  * place.
+ *
+ * A check may name the point it is run from, which is how a heatmap asks the
+ * same keyword from every square of its grid. DataForSEO takes either a named
+ * region or a coordinate but not both, so a coordinate replaces location_name
+ * for that call rather than narrowing it.
  */
 class DataForSEOProvider implements RankProviderInterface
 {
@@ -52,9 +57,9 @@ class DataForSEOProvider implements RankProviderInterface
             && filled($this->config['password'] ?? null);
     }
 
-    public function fetch(Keyword $keyword): RankResult
+    public function fetch(Keyword $keyword, ?GeoPoint $from = null): RankResult
     {
-        $response = $this->call($keyword);
+        $response = $this->call($keyword, $from);
         $task = $this->firstTask($response);
         $result = $task['result'][0] ?? [];
         $searchUrl = $result['check_url'] ?? null;
@@ -77,7 +82,7 @@ class DataForSEOProvider implements RankProviderInterface
      *
      * @throws RankProviderException
      */
-    protected function call(Keyword $keyword): array
+    protected function call(Keyword $keyword, ?GeoPoint $from = null): array
     {
         try {
             $response = $this->http
@@ -85,7 +90,7 @@ class DataForSEOProvider implements RankProviderInterface
                 ->withBasicAuth((string) $this->config['login'], (string) $this->config['password'])
                 ->timeout((int) ($this->config['timeout'] ?? 30))
                 ->acceptJson()
-                ->post(self::ENDPOINT, [$this->task($keyword)]);
+                ->post(self::ENDPOINT, [$this->task($keyword, $from)]);
         } catch (ConnectionException $e) {
             throw RankProviderException::for($this->name(), $e->getMessage());
         }
@@ -135,21 +140,33 @@ class DataForSEOProvider implements RankProviderInterface
     }
 
     /**
-     * The request body for one keyword.
+     * The request body for one keyword, optionally pinned to the point the
+     * search is run from.
      *
      * @return array<string, mixed>
      */
-    protected function task(Keyword $keyword): array
+    protected function task(Keyword $keyword, ?GeoPoint $from = null): array
     {
         return [
             'keyword' => $keyword->keyword,
             'language_code' => (string) ($this->config['language_code'] ?? 'ja'),
-            'location_name' => (string) ($this->config['location_name'] ?? 'Japan'),
+            ...$from === null
+                ? ['location_name' => (string) ($this->config['location_name'] ?? 'Japan')]
+                : ['location_coordinate' => $from->toCoordinateString($this->zoom())],
             'device' => 'desktop',
             'os' => 'windows',
             'depth' => (int) ($this->config['depth'] ?? 100),
             'calculate_rectangles' => false,
         ];
+    }
+
+    /**
+     * The map zoom a coordinate search is run at. It decides how much ground
+     * one grid point sees, so it is configurable rather than fixed here.
+     */
+    protected function zoom(): int
+    {
+        return (int) ($this->config['zoom'] ?? 14);
     }
 
     /**

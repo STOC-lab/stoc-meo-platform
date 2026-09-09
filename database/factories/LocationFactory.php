@@ -26,6 +26,18 @@ class LocationFactory extends Factory
             'website_url' => fake()->url(),
             'phone' => fake()->numerify('03-####-####'),
             'address' => fake()->address(),
+            // Somewhere in greater Tokyo, so a generated heatmap grid lands on
+            // plausible ground.
+            'latitude' => fake()->latitude(35.5, 35.8),
+            'longitude' => fake()->longitude(139.5, 139.9),
         ];
+    }
+
+    /**
+     * A store front that has not been placed on the map yet.
+     */
+    public function withoutCoordinates(): static
+    {
+        return $this->state(fn () => ['latitude' => null, 'longitude' => null]);
     }
 }

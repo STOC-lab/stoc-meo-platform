@@ -37,6 +37,10 @@ class StoreLocationRequest extends FormRequest
             'website_url' => ['nullable', 'url', 'max:255'],
             'phone' => ['nullable', 'string', 'max:32'],
             'address' => ['nullable', 'string', 'max:255'],
+            // Where the store front sits, which is what a heatmap lays its
+            // grid around. Optional: rank tracking does not need it.
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
         ];
     }
 

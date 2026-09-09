@@ -49,6 +49,8 @@ class UpdateLocationRequest extends FormRequest
             'website_url' => ['sometimes', 'nullable', 'url', 'max:255'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:32'],
             'address' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'latitude' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
         ];
     }
 

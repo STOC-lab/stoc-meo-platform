@@ -60,6 +60,10 @@ class FetchDailyRankingsJob implements ShouldQueue
                 'checked_at' => $result->checkedAt,
                 'provider' => $result->provider,
             ]);
+
+            // The new observation is what makes a drop measurable, so the
+            // check for one follows it rather than running on its own clock.
+            CheckRankingAlertsJob::dispatch($keyword);
         });
     }
 

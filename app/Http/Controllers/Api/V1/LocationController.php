@@ -116,6 +116,9 @@ class LocationController extends Controller
             'website_url' => $location->website_url,
             'phone' => $location->phone,
             'address' => $location->address,
+            'latitude' => $location->latitude,
+            'longitude' => $location->longitude,
+            'has_coordinates' => $location->hasCoordinates(),
             'created_at' => $location->created_at?->toIso8601String(),
             'updated_at' => $location->updated_at?->toIso8601String(),
         ];
