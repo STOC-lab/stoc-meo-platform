@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\InvitationController;
 use App\Http\Controllers\Api\V1\KeywordController;
 use App\Http\Controllers\Api\V1\LocationController;
 use App\Http\Controllers\Api\V1\MemberController;
+use App\Http\Controllers\Api\V1\ReportController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -105,6 +106,21 @@ Route::prefix('v1')
                     Route::post('heatmaps', [HeatmapController::class, 'store'])
                         ->name('api.v1.heatmaps.store');
                 });
+            });
+
+        // A report covers the whole organization rather than one store front,
+        // so these routes are not scoped through it: the store front in the
+        // URL says which organization is meant, and the tenant scope is what
+        // keeps another one's reports out of reach. Reading one is open to
+        // every member, since it summarises what they already see.
+        Route::prefix('locations/{location}')
+            ->middleware(['feature:pdf_report.enabled', 'role:viewer'])
+            ->group(function () {
+                Route::get('reports', [ReportController::class, 'index'])
+                    ->name('api.v1.reports.index');
+
+                Route::get('reports/{report}', [ReportController::class, 'show'])
+                    ->name('api.v1.reports.show');
             });
 
         // Competitor tracking is one allowance rather than two, so the whole

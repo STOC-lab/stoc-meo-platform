@@ -38,6 +38,17 @@ return [
             'report' => false,
         ],
 
+        // Generated monthly reports, laid out as {organization}/{YYYY-MM}.pdf.
+        // Private: a report is handed out by the download endpoint, which
+        // checks the plan and the membership first.
+        'reports' => [
+            'driver' => 'local',
+            'root' => storage_path('app/reports'),
+            'serve' => false,
+            'throw' => false,
+            'report' => false,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

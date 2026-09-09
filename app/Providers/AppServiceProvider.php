@@ -6,6 +6,7 @@ use App\Models\Organization;
 use App\Services\Ranking\DataForSEOProvider;
 use App\Services\Ranking\FallbackProvider;
 use App\Services\Ranking\RankProviderRouter;
+use App\Services\Reports\ReportPdfRenderer;
 use App\Support\Tenancy;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\ServiceProvider;
@@ -25,6 +26,10 @@ class AppServiceProvider extends ServiceProvider
         Cashier::ignoreRoutes();
 
         $this->registerRankProviders();
+
+        $this->app->singleton(ReportPdfRenderer::class, fn ($app) => new ReportPdfRenderer(
+            (array) $app['config']->get('reports.font', []),
+        ));
     }
 
     /**

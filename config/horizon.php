@@ -248,6 +248,23 @@ return [
             'timeout' => 1830,
             'nice' => 0,
         ],
+
+        // Reports arrive in one burst on the first of the month and each one
+        // holds a worker for as long as its PDF takes to lay out, so they get
+        // their own supervisor and a little more memory than the rest.
+        'supervisor-reports' => [
+            'connection' => 'redis',
+            'queue' => ['reports'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 256,
+            'tries' => 1,
+            'timeout' => 630,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -269,6 +286,12 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+
+            'supervisor-reports' => [
+                'maxProcesses' => 3,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
         ],
 
         'local' => [
@@ -281,6 +304,10 @@ return [
             ],
 
             'supervisor-heatmap' => [
+                'maxProcesses' => 1,
+            ],
+
+            'supervisor-reports' => [
                 'maxProcesses' => 1,
             ],
         ],

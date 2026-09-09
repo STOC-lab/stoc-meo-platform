@@ -15,3 +15,11 @@ Schedule::command('rankings:fetch-daily')
     ->timezone('Asia/Tokyo')
     ->withoutOverlapping()
     ->onOneServer();
+
+// The month's report is built once the month is over, an hour after the last
+// night's rank checks have had time to land in it.
+Schedule::command('reports:generate-monthly')
+    ->monthlyOn(1, '03:00')
+    ->timezone('Asia/Tokyo')
+    ->withoutOverlapping()
+    ->onOneServer();
