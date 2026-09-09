@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useCurrentLocation } from '@/hooks/use-locations';
 import {
@@ -23,10 +24,12 @@ import {
     useCreateKeyword,
     useDeleteKeyword,
     useKeywords,
+    useRankHistories,
     useToggleKeyword,
 } from '@/hooks/use-rankings';
 import { errorMessage } from '@/lib/api';
 import { formatDateTime, formatRank } from '@/lib/format';
+import type { Keyword } from '@/types/api';
 
 export default function Rankings() {
     const { location, isPending: locationsPending } = useCurrentLocation();
@@ -40,6 +43,7 @@ export default function Rankings() {
 
     const [dialogOpen, setDialogOpen] = useState(false);
     const [newKeyword, setNewKeyword] = useState('');
+    const [days, setDays] = useState(30);
 
     if (locationsPending) {
         return <LoadingState />;
@@ -58,7 +62,6 @@ export default function Rankings() {
     const atLimit = allowance?.remaining !== null && allowance?.remaining !== undefined && allowance.remaining <= 0;
 
     const tracked = keywords.data?.keywords ?? [];
-    const withResults = tracked.filter((keyword) => keyword.latest_result !== null);
 
     async function submit(event: React.FormEvent) {
         event.preventDefault();
@@ -99,30 +102,12 @@ export default function Rankings() {
                 </p>
             ) : null}
 
-            {withResults.length > 0 ? (
-                <Card>
-                    <CardHeader>
-                        <CardTitle>順位推移</CardTitle>
-                        <CardDescription>直近の計測結果（上位5キーワード）</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <RankHistoryChart
-                            series={withResults.slice(0, 5).map((keyword) => ({
-                                keyword: keyword.keyword,
-                                points: [
-                                    {
-                                        date: keyword.latest_result!.checked_at.slice(0, 10),
-                                        rank: keyword.latest_result!.rank,
-                                    },
-                                ],
-                            }))}
-                        />
-                        <p className="mt-2 text-xs text-muted-foreground">
-                            推移グラフは日次計測が蓄積されるにつれて描画されます。
-                        </p>
-                    </CardContent>
-                </Card>
-            ) : null}
+            <RankTrendCard
+                locationId={locationId}
+                keywords={tracked.filter((keyword) => keyword.latest_result !== null).slice(0, 5)}
+                days={days}
+                onDaysChange={setDays}
+            />
 
             <Card>
                 <CardHeader>
@@ -280,5 +265,76 @@ export default function Rankings() {
                 </DialogContent>
             </Dialog>
         </div>
+    );
+}
+
+/**
+ * Rank over time, one line per keyword, from the history endpoint.
+ *
+ * Each keyword is its own request, so a chart of five keywords is five small
+ * queries rather than one large one — and one failing leaves the others drawn.
+ */
+function RankTrendCard({
+    locationId,
+    keywords,
+    days,
+    onDaysChange,
+}: {
+    locationId: number | null;
+    keywords: Keyword[];
+    days: number;
+    onDaysChange: (days: number) => void;
+}) {
+    const histories = useRankHistories(
+        locationId,
+        keywords.map((keyword) => keyword.id),
+        days,
+    );
+
+    if (keywords.length === 0) {
+        return null;
+    }
+
+    const loading = histories.some((query) => query.isPending);
+
+    const series = keywords
+        .map((keyword, index) => ({
+            keyword: keyword.keyword,
+            points: histories[index]?.data ?? [],
+        }))
+        .filter((entry) => entry.points.length > 0);
+
+    return (
+        <Card>
+            <CardHeader>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <CardTitle>順位推移</CardTitle>
+                        <CardDescription>計測中キーワードのうち上位5件</CardDescription>
+                    </div>
+                    <Select value={String(days)} onValueChange={(value) => onDaysChange(Number(value))}>
+                        <SelectTrigger className="w-28">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="7">7日</SelectItem>
+                            <SelectItem value="30">30日</SelectItem>
+                            <SelectItem value="90">90日</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+            </CardHeader>
+            <CardContent>
+                {loading ? (
+                    <LoadingState />
+                ) : series.length === 0 ? (
+                    <p className="py-12 text-center text-sm text-muted-foreground">
+                        この期間の計測結果がまだありません。毎日 2:00 に自動計測されます。
+                    </p>
+                ) : (
+                    <RankHistoryChart series={series} />
+                )}
+            </CardContent>
+        </Card>
     );
 }

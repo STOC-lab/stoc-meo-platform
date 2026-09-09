@@ -66,6 +66,12 @@ export interface RankingResultSummary {
     checked_at: string;
 }
 
+export interface RankHistoryPoint {
+    date: string;
+    rank: number | null;
+    checked_at: string;
+}
+
 export interface Keyword {
     id: number;
     keyword: string;

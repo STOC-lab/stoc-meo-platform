@@ -85,6 +85,9 @@ Route::prefix('v1')
 
                     Route::get('keywords/{keyword}', [KeywordController::class, 'show'])
                         ->name('api.v1.keywords.show');
+
+                    Route::get('keywords/{keyword}/history', [KeywordController::class, 'history'])
+                        ->name('api.v1.keywords.history');
                 });
 
                 // Choosing what to track is a store manager's job, the same

@@ -10,8 +10,11 @@ use App\Http\Requests\UpdateKeywordRequest;
 use App\Jobs\FetchDailyRankingsJob;
 use App\Models\Keyword;
 use App\Models\Location;
+use App\Models\RankingResult;
 use App\Support\Tenancy;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 /**
@@ -24,6 +27,14 @@ use Illuminate\Http\Response;
  */
 class KeywordController extends Controller
 {
+    /**
+     * How far back the history endpoint looks by default, and the most it will
+     * look however much is asked for.
+     */
+    public const DEFAULT_HISTORY_DAYS = 30;
+
+    public const MAX_HISTORY_DAYS = 90;
+
     public function __construct(protected Tenancy $tenancy) {}
 
     public function index(Location $location): JsonResponse
@@ -109,6 +120,51 @@ class KeywordController extends Controller
             'message' => '順位の取得を開始しました。',
             'keyword' => $this->present($keyword),
         ], 202);
+    }
+
+    /**
+     * One keyword's rank over the last few weeks, oldest first.
+     *
+     * A keyword is normally checked once a day, but a manual check can add a
+     * second reading to the same day. The chart wants one point per day, so
+     * the latest check of each day is the one reported — the same rule the
+     * score uses, for the same reason.
+     */
+    public function history(Request $request, Location $location, Keyword $keyword): JsonResponse
+    {
+        $this->authorizeLocation($location);
+        $this->authorize('view', $keyword);
+
+        $validated = $request->validate([
+            'days' => ['sometimes', 'integer', 'min:1', 'max:'.self::MAX_HISTORY_DAYS],
+        ]);
+
+        $days = (int) ($validated['days'] ?? self::DEFAULT_HISTORY_DAYS);
+        $since = CarbonImmutable::now()->subDays($days - 1)->startOfDay();
+
+        $points = RankingResult::query()
+            ->where('keyword_id', $keyword->getKey())
+            ->where('checked_at', '>=', $since)
+            ->orderBy('checked_at')
+            ->get(['rank', 'checked_at'])
+            // Keyed by day, so a later check of the same day replaces the
+            // earlier one rather than adding a second point to it.
+            ->keyBy(fn (RankingResult $result) => $result->checked_at->toDateString())
+            ->map(fn (RankingResult $result, string $date) => [
+                'date' => $date,
+                'rank' => $result->rank,
+                'checked_at' => $result->checked_at->toIso8601String(),
+            ])
+            ->values();
+
+        return response()->json([
+            'keyword' => [
+                'id' => $keyword->id,
+                'keyword' => $keyword->keyword,
+            ],
+            'days' => $days,
+            'history' => $points->all(),
+        ]);
     }
 
     /**

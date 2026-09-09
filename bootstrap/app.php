@@ -36,6 +36,15 @@ return Application::configure(basePath: dirname(__DIR__))
         // session cookie, so API requests from it are stateful.
         $middleware->statefulApi();
 
+        // An unauthenticated request to an API route must be told so in JSON.
+        // Laravel's default is to redirect a guest to a route named "login",
+        // which does not exist here — the SPA owns /login — so without this a
+        // request that did not ask for JSON gets a 500 and an error in the log
+        // instead of a clean 401.
+        $middleware->redirectGuestsTo(
+            fn (Request $request) => $request->is('api/*') ? null : '/login',
+        );
+
         $middleware->alias([
             'tenant' => IdentifyTenant::class,
             'role' => CheckRole::class,
