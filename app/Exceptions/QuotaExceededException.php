@@ -3,40 +3,40 @@
 namespace App\Exceptions;
 
 use App\Enums\Feature;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use RuntimeException;
 
 /**
  * Thrown when an organization tries to consume more of a metered feature than
- * its plan allows.
+ * its plan allows for the period.
  */
-class QuotaExceededException extends RuntimeException
+class QuotaExceededException extends EntitlementException
 {
     public function __construct(
-        public readonly string $feature,
+        string $feature,
         public readonly int $limit,
         public readonly int $used,
     ) {
-        parent::__construct("Quota exceeded for [{$feature}]: {$used}/{$limit} used.");
+        parent::__construct($feature, "Quota exceeded for [{$feature}]: {$used}/{$limit} used.");
     }
 
     public static function for(Feature|string $feature, int $limit, int $used): self
     {
-        return new self(
-            $feature instanceof Feature ? $feature->value : $feature,
-            $limit,
-            $used,
-        );
+        return new self(static::key($feature), $limit, $used);
     }
 
-    public function render(Request $request): JsonResponse
+    protected function userMessage(): string
     {
-        return response()->json([
-            'message' => 'ご利用中のプランの上限に達しました。プランのアップグレードをご検討ください。',
-            'feature' => $this->feature,
+        return 'ご利用中のプランの今月の上限に達しました。';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function details(): array
+    {
+        return [
             'limit' => $this->limit,
             'used' => $this->used,
-        ], 402);
+            'remaining' => max(0, $this->limit - $this->used),
+        ];
     }
 }

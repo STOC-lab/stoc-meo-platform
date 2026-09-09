@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Enums\Feature;
 use App\Models\Brand;
 use App\Models\Location;
 use App\Models\Organization;
+use App\Models\Plan;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -236,8 +238,50 @@ class LocationCrudTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_the_first_store_front_never_needs_the_multi_location_entitlement(): void
+    {
+        $this->onPlanWithMultiLocation(false);
+
+        $this->actingAs($this->member('org_admin'))
+            ->postJson($this->url(), ['name' => '渋谷店'])
+            ->assertCreated();
+    }
+
+    public function test_a_second_store_front_needs_the_multi_location_entitlement(): void
+    {
+        $this->onPlanWithMultiLocation(false);
+        $this->location();
+
+        $this->actingAs($this->member('org_admin'))
+            ->postJson($this->url(), ['name' => '渋谷店'])
+            ->assertForbidden()
+            ->assertJsonPath('feature', 'multi_location.enabled')
+            ->assertJsonPath('upgrade.required', true);
+
+        $this->assertDatabaseMissing('locations', ['name' => '渋谷店']);
+    }
+
+    public function test_a_second_store_front_is_created_on_a_plan_that_allows_it(): void
+    {
+        $this->onPlanWithMultiLocation(true);
+        $this->location();
+
+        $this->actingAs($this->member('org_admin'))
+            ->postJson($this->url(), ['name' => '渋谷店'])
+            ->assertCreated();
+    }
+
     public function test_a_guest_is_rejected(): void
     {
         $this->getJson($this->url())->assertUnauthorized();
+    }
+
+    protected function onPlanWithMultiLocation(bool $enabled): void
+    {
+        $plan = Plan::factory()
+            ->withFeatures([Feature::MultiLocationEnabled->value => $enabled])
+            ->create();
+
+        $this->organization->forceFill(['plan_id' => $plan->getKey()])->save();
     }
 }

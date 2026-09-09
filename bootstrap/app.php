@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Middleware\CheckRole;
+use App\Http\Middleware\EnforceUsageQuota;
+use App\Http\Middleware\EnsureFeatureIsEnabled;
 use App\Http\Middleware\IdentifyTenant;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -37,6 +39,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'tenant' => IdentifyTenant::class,
             'role' => CheckRole::class,
+            'feature' => EnsureFeatureIsEnabled::class,
+            'quota' => EnforceUsageQuota::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

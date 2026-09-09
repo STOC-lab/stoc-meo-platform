@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\Feature;
+use App\Exceptions\FeatureNotAvailableException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreLocationRequest;
 use App\Http\Requests\UpdateLocationRequest;
 use App\Models\Location;
 use App\Models\Organization;
+use App\Services\FeatureResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -20,6 +23,8 @@ use Illuminate\Http\Response;
  */
 class LocationController extends Controller
 {
+    public function __construct(protected FeatureResolver $features) {}
+
     /**
      * List the store fronts, optionally narrowed to one brand.
      */
@@ -51,6 +56,7 @@ class LocationController extends Controller
     public function store(StoreLocationRequest $request, Organization $organization): JsonResponse
     {
         $this->authorize('create', Location::class);
+        $this->guardMultiLocationAllowance($organization);
 
         $location = Location::create($request->validated());
 
@@ -73,6 +79,24 @@ class LocationController extends Controller
         $location->delete();
 
         return response()->noContent();
+    }
+
+    /**
+     * Plans without the multi-location entitlement run a single store front,
+     * so the refusal only bites on the second one — signing up and adding the
+     * first shop is never blocked.
+     *
+     * @throws FeatureNotAvailableException
+     */
+    protected function guardMultiLocationAllowance(Organization $organization): void
+    {
+        if ($organization->locations()->count() === 0) {
+            return;
+        }
+
+        if (! $this->features->allows(Feature::MultiLocationEnabled, $organization)) {
+            throw new FeatureNotAvailableException(Feature::MultiLocationEnabled);
+        }
     }
 
     /**
