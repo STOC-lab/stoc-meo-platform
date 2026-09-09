@@ -13,6 +13,18 @@
 
 require __DIR__.'/../vendor/autoload.php';
 
+/*
+ * A cached config file wins over every environment variable phpunit.xml sets,
+ * so on a host that has run `php artisan config:cache` — a deployed one always
+ * has — the suite would boot against the deployed database instead of the test
+ * one. Pointing the cache at a path that is never written sends Laravel back to
+ * reading config/ directly, without disturbing the cache the host is serving
+ * from. This has to happen before the framework boots, which is why it lives
+ * here rather than in TestCase::setUp().
+ */
+$_ENV['APP_CONFIG_CACHE'] = $_SERVER['APP_CONFIG_CACHE'] = __DIR__.'/../bootstrap/cache/config.testing-never-written.php';
+putenv('APP_CONFIG_CACHE='.$_ENV['APP_CONFIG_CACHE']);
+
 $drivers = [
     'CACHE_STORE' => 'array',
     'SESSION_DRIVER' => 'array',

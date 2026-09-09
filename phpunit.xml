@@ -19,6 +19,12 @@
     </source>
     <php>
         <env name="APP_ENV" value="testing"/>
+        <!--
+            The suite asserts on dates, so its clock is pinned rather than
+            inherited: config/app.php reads APP_TIMEZONE, and a host whose .env
+            names a different zone would otherwise move every date under test.
+        -->
+        <env name="APP_TIMEZONE" value="UTC" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>

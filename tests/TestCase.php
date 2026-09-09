@@ -7,10 +7,10 @@ use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 abstract class TestCase extends BaseTestCase
 {
     /**
-     * Tests must never touch a real database. phpunit.xml points them at an
-     * in-memory SQLite connection, but a cached config file silently wins over
-     * those environment variables, so verify where we actually landed before a
-     * single test runs.
+     * Tests must never touch a real database. phpunit.xml points them at
+     * stoc_meo_test and tests/bootstrap.php keeps a deployed host's cached
+     * config from overruling it, but both are only arrangements; this checks
+     * where the suite actually landed before a single test runs.
      */
     protected function setUp(): void
     {
@@ -22,7 +22,9 @@ abstract class TestCase extends BaseTestCase
         if (! in_array($database, [':memory:', 'stoc_meo_test'], true)) {
             $this->fail(
                 "Refusing to run tests against [{$connection}: {$database}]. "
-                .'Run `php artisan config:clear` and try again.'
+                .'tests/bootstrap.php points APP_CONFIG_CACHE at a file that is never '
+                .'written so a cached config cannot win; check what has overridden it, '
+                .'and do not clear the cache of a deployed host to get past this.'
             );
         }
 
