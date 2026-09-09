@@ -65,6 +65,10 @@ class SyncReviewsJob implements ShouldQueue
             }
 
             $account->forceFill(['last_synced_at' => now()])->save();
+
+            // A review that arrived overnight is answered without anyone
+            // opening the application — on the plans that ask for it.
+            AutoReplyReviewsJob::dispatch($this->location);
         });
     }
 

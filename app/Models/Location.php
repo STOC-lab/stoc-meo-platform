@@ -89,6 +89,30 @@ class Location extends Model
     }
 
     /**
+     * @return HasMany<MeoScore, $this>
+     */
+    public function meoScores(): HasMany
+    {
+        return $this->hasMany(MeoScore::class);
+    }
+
+    /**
+     * @return HasMany<ImprovementProposal, $this>
+     */
+    public function proposals(): HasMany
+    {
+        return $this->hasMany(ImprovementProposal::class);
+    }
+
+    /**
+     * @return HasMany<Analysis, $this>
+     */
+    public function analyses(): HasMany
+    {
+        return $this->hasMany(Analysis::class);
+    }
+
+    /**
      * @return HasMany<ContentCampaign, $this>
      */
     public function campaigns(): HasMany

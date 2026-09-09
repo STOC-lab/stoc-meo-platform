@@ -55,3 +55,20 @@ Schedule::command('instagram:publish-weekly')
     ->timezone('Asia/Tokyo')
     ->withoutOverlapping()
     ->onOneServer();
+
+// The MEO score is what the analyses and proposals are written from, so it is
+// calculated after the night's rank checks have landed and before anything
+// reads it.
+Schedule::command('ai:insights daily')
+    ->dailyAt('05:00')
+    ->timezone('Asia/Tokyo')
+    ->withoutOverlapping()
+    ->onOneServer();
+
+// The weekly reading, and the advice that comes with it, once the week has
+// closed.
+Schedule::command('ai:insights weekly')
+    ->weeklyOn(1, '06:00')
+    ->timezone('Asia/Tokyo')
+    ->withoutOverlapping()
+    ->onOneServer();

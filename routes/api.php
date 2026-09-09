@@ -9,10 +9,12 @@ use App\Http\Controllers\Api\V1\GbpPerformanceController;
 use App\Http\Controllers\Api\V1\GbpPostController;
 use App\Http\Controllers\Api\V1\GoogleConnectionController;
 use App\Http\Controllers\Api\V1\HeatmapController;
+use App\Http\Controllers\Api\V1\ImprovementProposalController;
 use App\Http\Controllers\Api\V1\InvitationController;
 use App\Http\Controllers\Api\V1\KeywordController;
 use App\Http\Controllers\Api\V1\LocationController;
 use App\Http\Controllers\Api\V1\MemberController;
+use App\Http\Controllers\Api\V1\MeoInsightController;
 use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\ReviewController;
 use Illuminate\Http\Request;
@@ -170,6 +172,31 @@ Route::prefix('v1')
                 Route::middleware(['role:location_admin', 'feature:gbp.post.monthly_limit'])->group(function () {
                     Route::post('gbp-posts', [GbpPostController::class, 'store'])
                         ->name('api.v1.gbp-posts.store');
+                });
+            });
+
+        // The MEO score and what the model made of it. The score itself is
+        // calculated for every plan — it is what the rest is written from —
+        // so reading it is not gated; the analyses only exist on the plans
+        // that generate them, so an empty list is the honest answer there.
+        Route::prefix('locations/{location}')
+            ->scopeBindings()
+            ->group(function () {
+                Route::middleware('role:viewer')->group(function () {
+                    Route::get('meo-score', [MeoInsightController::class, 'score'])
+                        ->name('api.v1.meo-score.show');
+
+                    Route::get('analyses', [MeoInsightController::class, 'analyses'])
+                        ->name('api.v1.analyses.index');
+
+                    Route::get('proposals', [ImprovementProposalController::class, 'index'])
+                        ->name('api.v1.proposals.index');
+                });
+
+                // Deciding what to do about a proposal is shop-floor work.
+                Route::middleware('role:staff')->group(function () {
+                    Route::match(['put', 'patch'], 'proposals/{proposal}', [ImprovementProposalController::class, 'update'])
+                        ->name('api.v1.proposals.update');
                 });
             });
 

@@ -62,4 +62,30 @@ return [
         'hashtag_limit' => env('AI_CAMPAIGN_HASHTAG_LIMIT', 12),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Improvement Proposals
+    |--------------------------------------------------------------------------
+    |
+    | Advice worth acting on takes more judgement than a caption does, so this
+    | is the one place the stronger model is the default.
+    |
+    */
+
+    'proposals' => [
+        'model' => env('AI_PROPOSALS_MODEL', 'strong'),
+        'max_tokens' => env('AI_PROPOSALS_MAX_TOKENS', 2000),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Analyses
+    |--------------------------------------------------------------------------
+    */
+
+    'analysis' => [
+        'model' => env('AI_ANALYSIS_MODEL', 'fast'),
+        'max_tokens' => env('AI_ANALYSIS_MAX_TOKENS', 1500),
+    ],
+
 ];
