@@ -52,7 +52,7 @@ class BillingEndpointsTest extends TestCase
                 ->andReturn('https://checkout.stripe.com/c/pay/cs_test123');
         });
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson('/api/v1/billing/checkout', ['plan_code' => 'meo_standard'])
             ->assertOk()
             ->assertExactJson(['url' => 'https://checkout.stripe.com/c/pay/cs_test123']);
@@ -81,7 +81,7 @@ class BillingEndpointsTest extends TestCase
     {
         $this->mock(BillingService::class, fn (MockInterface $mock) => $mock->shouldNotReceive('checkoutUrl'));
 
-        $this->actingAs($this->member('editor'))
+        $this->actingAs($this->member('staff'))
             ->postJson('/api/v1/billing/checkout', ['plan_code' => 'meo_standard'])
             ->assertForbidden();
     }
@@ -103,7 +103,7 @@ class BillingEndpointsTest extends TestCase
 
     public function test_an_unknown_plan_is_rejected(): void
     {
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson('/api/v1/billing/checkout', ['plan_code' => 'nope'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('plan_code');
@@ -113,7 +113,7 @@ class BillingEndpointsTest extends TestCase
     {
         Plan::factory()->create(['code' => 'meo_free', 'stripe_price_id' => null]);
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson('/api/v1/billing/checkout', ['plan_code' => 'meo_free'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('plan_code');
@@ -127,7 +127,7 @@ class BillingEndpointsTest extends TestCase
             'is_active' => false,
         ]);
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson('/api/v1/billing/checkout', ['plan_code' => 'meo_retired'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('plan_code');
@@ -143,7 +143,7 @@ class BillingEndpointsTest extends TestCase
                 ->andReturn('https://billing.stripe.com/p/session/test123');
         });
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->getJson('/api/v1/billing/portal')
             ->assertOk()
             ->assertExactJson(['url' => 'https://billing.stripe.com/p/session/test123']);

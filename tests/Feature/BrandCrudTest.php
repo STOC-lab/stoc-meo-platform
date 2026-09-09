@@ -72,9 +72,9 @@ class BrandCrudTest extends TestCase
             ->assertJsonPath('brand.id', $brand->id);
     }
 
-    public function test_an_admin_creates_a_brand(): void
+    public function test_an_org_admin_creates_a_brand(): void
     {
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson($this->url(), ['name' => 'あかね珈琲'])
             ->assertCreated()
             ->assertJsonPath('brand.name', 'あかね珈琲')
@@ -88,7 +88,7 @@ class BrandCrudTest extends TestCase
 
     public function test_the_brand_name_is_required(): void
     {
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson($this->url(), [])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('name');
@@ -98,7 +98,7 @@ class BrandCrudTest extends TestCase
     {
         Brand::factory()->create(['organization_id' => $this->organization->id, 'name' => 'あかね珈琲']);
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson($this->url(), ['name' => 'あかね珈琲'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('name');
@@ -111,25 +111,25 @@ class BrandCrudTest extends TestCase
             'name' => 'あかね珈琲',
         ]);
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson($this->url(), ['name' => 'あかね珈琲'])
             ->assertCreated();
     }
 
-    public function test_an_editor_cannot_create_a_brand(): void
+    public function test_a_location_admin_cannot_create_a_brand(): void
     {
-        $this->actingAs($this->member('editor'))
+        $this->actingAs($this->member('location_admin'))
             ->postJson($this->url(), ['name' => 'あかね珈琲'])
             ->assertForbidden();
 
         $this->assertDatabaseCount('brands', 0);
     }
 
-    public function test_an_admin_renames_a_brand(): void
+    public function test_an_org_admin_renames_a_brand(): void
     {
         $brand = Brand::factory()->create(['organization_id' => $this->organization->id, 'name' => '旧名']);
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->patchJson($this->url("/{$brand->id}"), ['name' => '新名'])
             ->assertOk()
             ->assertJsonPath('brand.name', '新名');
@@ -141,12 +141,12 @@ class BrandCrudTest extends TestCase
     {
         $brand = Brand::factory()->create(['organization_id' => $this->organization->id, 'name' => 'あかね珈琲']);
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->patchJson($this->url("/{$brand->id}"), ['name' => 'あかね珈琲'])
             ->assertOk();
     }
 
-    public function test_an_admin_deletes_a_brand_and_its_locations_survive(): void
+    public function test_an_org_admin_deletes_a_brand_and_its_locations_survive(): void
     {
         $brand = Brand::factory()->create(['organization_id' => $this->organization->id]);
         $location = Location::factory()->create([
@@ -154,7 +154,7 @@ class BrandCrudTest extends TestCase
             'brand_id' => $brand->id,
         ]);
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->deleteJson($this->url("/{$brand->id}"))
             ->assertNoContent();
 
@@ -162,11 +162,11 @@ class BrandCrudTest extends TestCase
         $this->assertDatabaseHas('locations', ['id' => $location->id, 'brand_id' => null]);
     }
 
-    public function test_an_editor_cannot_delete_a_brand(): void
+    public function test_a_location_admin_cannot_delete_a_brand(): void
     {
         $brand = Brand::factory()->create(['organization_id' => $this->organization->id]);
 
-        $this->actingAs($this->member('editor'))
+        $this->actingAs($this->member('location_admin'))
             ->deleteJson($this->url("/{$brand->id}"))
             ->assertForbidden();
 
@@ -177,7 +177,7 @@ class BrandCrudTest extends TestCase
     {
         $other = Brand::factory()->create(['organization_id' => Organization::factory()->create()->id]);
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->getJson($this->url("/{$other->id}"))
             ->assertNotFound();
     }

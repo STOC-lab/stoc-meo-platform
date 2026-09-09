@@ -42,14 +42,14 @@ class MemberManagementTest extends TestCase
         return $user->roleIn($this->organization);
     }
 
-    public function test_a_member_lists_the_membership(): void
+    public function test_an_org_admin_lists_the_membership(): void
     {
         $viewer = $this->member('viewer', ['name' => '田中太郎']);
 
-        $this->actingAs($viewer)
+        $this->actingAs($this->member('org_admin'))
             ->getJson($this->url())
             ->assertOk()
-            ->assertJsonCount(2, 'members')
+            ->assertJsonCount(3, 'members')
             ->assertJsonFragment([
                 'id' => $viewer->id,
                 'name' => '田中太郎',
@@ -70,6 +70,13 @@ class MemberManagementTest extends TestCase
             ->assertJsonCount(1, 'members');
     }
 
+    public function test_a_location_admin_cannot_list_the_membership(): void
+    {
+        $this->actingAs($this->member('location_admin'))
+            ->getJson($this->url())
+            ->assertForbidden();
+    }
+
     public function test_a_user_outside_the_organization_cannot_list_the_membership(): void
     {
         $this->actingAs(User::factory()->create())
@@ -77,18 +84,18 @@ class MemberManagementTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_an_admin_changes_a_members_role(): void
+    public function test_an_org_admin_changes_a_members_role(): void
     {
-        $admin = $this->member('admin');
+        $orgAdmin = $this->member('org_admin');
         $member = $this->member('viewer');
 
-        $this->actingAs($admin)
-            ->patchJson($this->url("/{$member->id}"), ['role' => 'editor'])
+        $this->actingAs($orgAdmin)
+            ->patchJson($this->url("/{$member->id}"), ['role' => 'staff'])
             ->assertOk()
-            ->assertJsonPath('member.role', 'editor')
-            ->assertJsonPath('member.role_label', '編集者');
+            ->assertJsonPath('member.role', 'staff')
+            ->assertJsonPath('member.role_label', 'スタッフ');
 
-        $this->assertSame(OrganizationRole::Editor, $this->roleOf($member));
+        $this->assertSame(OrganizationRole::Staff, $this->roleOf($member));
     }
 
     public function test_the_role_must_be_a_known_one(): void
@@ -101,13 +108,13 @@ class MemberManagementTest extends TestCase
             ->assertJsonValidationErrors('role');
     }
 
-    public function test_an_editor_cannot_change_a_members_role(): void
+    public function test_a_location_admin_cannot_change_a_members_role(): void
     {
-        $editor = $this->member('editor');
+        $locationAdmin = $this->member('location_admin');
         $member = $this->member('viewer');
 
-        $this->actingAs($editor)
-            ->patchJson($this->url("/{$member->id}"), ['role' => 'admin'])
+        $this->actingAs($locationAdmin)
+            ->patchJson($this->url("/{$member->id}"), ['role' => 'org_admin'])
             ->assertForbidden();
 
         $this->assertSame(OrganizationRole::Viewer, $this->roleOf($member));
@@ -115,10 +122,10 @@ class MemberManagementTest extends TestCase
 
     public function test_only_an_owner_may_grant_ownership(): void
     {
-        $admin = $this->member('admin');
-        $member = $this->member('editor');
+        $orgAdmin = $this->member('org_admin');
+        $member = $this->member('staff');
 
-        $this->actingAs($admin)
+        $this->actingAs($orgAdmin)
             ->patchJson($this->url("/{$member->id}"), ['role' => 'owner'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('role');
@@ -130,12 +137,12 @@ class MemberManagementTest extends TestCase
         $this->assertSame(OrganizationRole::Owner, $this->roleOf($member));
     }
 
-    public function test_an_admin_cannot_change_an_owners_role(): void
+    public function test_an_org_admin_cannot_change_an_owners_role(): void
     {
-        $admin = $this->member('admin');
+        $orgAdmin = $this->member('org_admin');
         $secondOwner = $this->member('owner');
 
-        $this->actingAs($admin)
+        $this->actingAs($orgAdmin)
             ->patchJson($this->url("/{$secondOwner->id}"), ['role' => 'viewer'])
             ->assertForbidden();
 
@@ -145,7 +152,7 @@ class MemberManagementTest extends TestCase
     public function test_the_last_owner_cannot_be_demoted(): void
     {
         $this->actingAs($this->owner)
-            ->patchJson($this->url("/{$this->owner->id}"), ['role' => 'admin'])
+            ->patchJson($this->url("/{$this->owner->id}"), ['role' => 'org_admin'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('role');
 
@@ -157,18 +164,18 @@ class MemberManagementTest extends TestCase
         $this->member('owner');
 
         $this->actingAs($this->owner)
-            ->patchJson($this->url("/{$this->owner->id}"), ['role' => 'admin'])
+            ->patchJson($this->url("/{$this->owner->id}"), ['role' => 'org_admin'])
             ->assertOk();
 
-        $this->assertSame(OrganizationRole::Admin, $this->roleOf($this->owner));
+        $this->assertSame(OrganizationRole::OrgAdmin, $this->roleOf($this->owner));
     }
 
-    public function test_an_admin_removes_a_member(): void
+    public function test_an_org_admin_removes_a_member(): void
     {
-        $admin = $this->member('admin');
+        $orgAdmin = $this->member('org_admin');
         $member = $this->member('viewer');
 
-        $this->actingAs($admin)
+        $this->actingAs($orgAdmin)
             ->deleteJson($this->url("/{$member->id}"))
             ->assertNoContent();
 
@@ -179,24 +186,24 @@ class MemberManagementTest extends TestCase
         $this->assertDatabaseHas('users', ['id' => $member->id]);
     }
 
-    public function test_an_editor_cannot_remove_a_member(): void
+    public function test_a_location_admin_cannot_remove_a_member(): void
     {
-        $editor = $this->member('editor');
+        $locationAdmin = $this->member('location_admin');
         $member = $this->member('viewer');
 
-        $this->actingAs($editor)
+        $this->actingAs($locationAdmin)
             ->deleteJson($this->url("/{$member->id}"))
             ->assertForbidden();
 
         $this->assertNotNull($this->roleOf($member));
     }
 
-    public function test_an_admin_cannot_remove_an_owner(): void
+    public function test_an_org_admin_cannot_remove_an_owner(): void
     {
-        $admin = $this->member('admin');
+        $orgAdmin = $this->member('org_admin');
         $secondOwner = $this->member('owner');
 
-        $this->actingAs($admin)
+        $this->actingAs($orgAdmin)
             ->deleteJson($this->url("/{$secondOwner->id}"))
             ->assertForbidden();
 

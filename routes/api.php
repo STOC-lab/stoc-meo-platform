@@ -43,7 +43,7 @@ Route::prefix('v1')
     ->middleware(['auth:sanctum', 'tenant'])
     ->group(function () {
         // Payment and cancellation are admin territory.
-        Route::middleware('role:admin')->group(function () {
+        Route::middleware('role:org_admin')->group(function () {
             Route::post('billing/checkout', [BillingController::class, 'checkout'])
                 ->name('api.v1.billing.checkout');
 
@@ -59,8 +59,7 @@ Route::prefix('v1')
         Route::prefix('organizations/{organization}')
             ->scopeBindings()
             ->group(function () {
-                // Reading the shop structure and who is in the organization is
-                // open to every member.
+                // The shop structure is readable by every member.
                 Route::middleware('role:viewer')->group(function () {
                     Route::get('brands', [BrandController::class, 'index'])
                         ->name('api.v1.brands.index');
@@ -73,21 +72,23 @@ Route::prefix('v1')
 
                     Route::get('locations/{location}', [LocationController::class, 'show'])
                         ->name('api.v1.locations.show');
-
-                    Route::get('members', [MemberController::class, 'index'])
-                        ->name('api.v1.members.index');
                 });
 
-                // Keeping a store front's details current is day-to-day work.
-                Route::middleware('role:editor')->group(function () {
+                // Keeping a store front's details current is a store manager's
+                // day-to-day work.
+                Route::middleware('role:location_admin')->group(function () {
                     Route::match(['put', 'patch'], 'locations/{location}', [LocationController::class, 'update'])
                         ->name('api.v1.locations.update');
                 });
 
                 // Adding or removing a store front changes what the
                 // organization is billed for, and membership decides who may
-                // do anything at all, so both stay with administrators.
-                Route::middleware('role:admin')->group(function () {
+                // do anything at all, so both stay with organization
+                // administrators — the member list included.
+                Route::middleware('role:org_admin')->group(function () {
+                    Route::get('members', [MemberController::class, 'index'])
+                        ->name('api.v1.members.index');
+
                     Route::post('brands', [BrandController::class, 'store'])
                         ->name('api.v1.brands.store');
 

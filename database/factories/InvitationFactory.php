@@ -24,7 +24,7 @@ class InvitationFactory extends Factory
             'organization_id' => Organization::factory(),
             'invited_by' => User::factory(),
             'email' => fake()->unique()->safeEmail(),
-            'role' => OrganizationRole::Editor->value,
+            'role' => OrganizationRole::Staff->value,
             // Only the hash is stored; use plaintext() when the link matters.
             'token' => Invitation::hashToken(fake()->unique()->sha256()),
             'expires_at' => now()->addDays(Invitation::LIFETIME_DAYS),

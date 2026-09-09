@@ -7,10 +7,12 @@ use App\Models\Organization;
 use App\Models\User;
 
 /**
- * Who may look at and change an organization's membership. The rules that
- * protect the owner seat — only an owner may hand out or take away ownership,
- * and the last one cannot be removed — depend on the member being acted on and
- * live in MemberController.
+ * Who may look at and change an organization's membership. v1.3 keeps the
+ * member list itself behind the administrator rank, so who holds which role is
+ * not visible to the people it describes. The rules that protect the owner
+ * seat — only an owner may hand out or take away ownership, and the last one
+ * cannot be removed — depend on the member being acted on and live in
+ * MemberController.
  */
 class OrganizationPolicy
 {
@@ -19,27 +21,23 @@ class OrganizationPolicy
         return $user->hasRoleIn($organization, OrganizationRole::Viewer);
     }
 
-    /**
-     * Members are visible to everyone in the organization: knowing who to ask
-     * for access is not privileged information.
-     */
     public function viewMembers(User $user, Organization $organization): bool
     {
-        return $user->hasRoleIn($organization, OrganizationRole::Viewer);
+        return $user->hasRoleIn($organization, OrganizationRole::OrgAdmin);
     }
 
     public function manageMembers(User $user, Organization $organization): bool
     {
-        return $user->hasRoleIn($organization, OrganizationRole::Admin);
+        return $user->hasRoleIn($organization, OrganizationRole::OrgAdmin);
     }
 
     public function viewInvitations(User $user, Organization $organization): bool
     {
-        return $user->hasRoleIn($organization, OrganizationRole::Admin);
+        return $user->hasRoleIn($organization, OrganizationRole::OrgAdmin);
     }
 
     public function manageInvitations(User $user, Organization $organization): bool
     {
-        return $user->hasRoleIn($organization, OrganizationRole::Admin);
+        return $user->hasRoleIn($organization, OrganizationRole::OrgAdmin);
     }
 }

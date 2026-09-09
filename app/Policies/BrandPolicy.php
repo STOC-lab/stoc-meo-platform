@@ -31,17 +31,17 @@ class BrandPolicy
 
     public function create(User $user): bool
     {
-        return $this->hasRole($user, OrganizationRole::Admin);
+        return $this->hasRole($user, OrganizationRole::OrgAdmin);
     }
 
     public function update(User $user, Brand $brand): bool
     {
-        return $this->belongsToTenant($brand) && $this->hasRole($user, OrganizationRole::Admin);
+        return $this->belongsToTenant($brand) && $this->hasRole($user, OrganizationRole::OrgAdmin);
     }
 
     public function delete(User $user, Brand $brand): bool
     {
-        return $this->belongsToTenant($brand) && $this->hasRole($user, OrganizationRole::Admin);
+        return $this->belongsToTenant($brand) && $this->hasRole($user, OrganizationRole::OrgAdmin);
     }
 
     protected function hasRole(User $user, OrganizationRole $role): bool

@@ -44,7 +44,7 @@ class InvitationTest extends TestCase
      *
      * @return array{0: Invitation, 1: string}
      */
-    protected function invite(string $email, OrganizationRole $role = OrganizationRole::Editor): array
+    protected function invite(string $email, OrganizationRole $role = OrganizationRole::Staff): array
     {
         [$plain, $hashed] = Invitation::generateToken();
 
@@ -60,25 +60,25 @@ class InvitationTest extends TestCase
         return [$invitation, $plain];
     }
 
-    public function test_an_admin_invites_an_address_and_the_email_is_sent(): void
+    public function test_an_org_admin_invites_an_address_and_the_email_is_sent(): void
     {
         Notification::fake();
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson("/api/v1/organizations/{$this->organization->id}/invitations", [
                 'email' => 'new@example.com',
-                'role' => 'editor',
+                'role' => 'staff',
             ])
             ->assertCreated()
             ->assertJsonPath('invitation.email', 'new@example.com')
-            ->assertJsonPath('invitation.role', 'editor')
+            ->assertJsonPath('invitation.role', 'staff')
             ->assertJsonPath('invitation.organization.name', 'テスト商店')
             ->assertJsonPath('invitation.requires_registration', true);
 
         $invitation = Invitation::acrossTenants()->firstOrFail();
 
         $this->assertSame('new@example.com', $invitation->email);
-        $this->assertSame(OrganizationRole::Editor, $invitation->role);
+        $this->assertSame(OrganizationRole::Staff, $invitation->role);
         $this->assertNull($invitation->accepted_at);
 
         Notification::assertSentOnDemand(
@@ -95,7 +95,7 @@ class InvitationTest extends TestCase
     {
         Notification::fake();
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson("/api/v1/organizations/{$this->organization->id}/invitations", [
                 'email' => 'new@example.com',
                 'role' => 'viewer',
@@ -118,11 +118,11 @@ class InvitationTest extends TestCase
         $this->assertDatabaseHas('invitations', ['token' => Invitation::hashToken($plainToken)]);
     }
 
-    public function test_an_editor_cannot_invite(): void
+    public function test_a_location_admin_cannot_invite(): void
     {
         Notification::fake();
 
-        $this->actingAs($this->member('editor'))
+        $this->actingAs($this->member('staff'))
             ->postJson("/api/v1/organizations/{$this->organization->id}/invitations", [
                 'email' => 'new@example.com',
                 'role' => 'viewer',
@@ -134,7 +134,7 @@ class InvitationTest extends TestCase
 
     public function test_only_an_owner_can_invite_an_owner(): void
     {
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson("/api/v1/organizations/{$this->organization->id}/invitations", [
                 'email' => 'new@example.com',
                 'role' => 'owner',
@@ -156,10 +156,10 @@ class InvitationTest extends TestCase
     {
         $existing = $this->member('viewer');
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson("/api/v1/organizations/{$this->organization->id}/invitations", [
                 'email' => $existing->email,
-                'role' => 'editor',
+                'role' => 'staff',
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('email');
@@ -168,9 +168,9 @@ class InvitationTest extends TestCase
     public function test_re_inviting_replaces_the_outstanding_invitation(): void
     {
         Notification::fake();
-        $admin = $this->member('admin');
+        $admin = $this->member('org_admin');
 
-        foreach (['viewer', 'editor'] as $role) {
+        foreach (['viewer', 'staff'] as $role) {
             $this->actingAs($admin)
                 ->postJson("/api/v1/organizations/{$this->organization->id}/invitations", [
                     'email' => 'new@example.com',
@@ -180,12 +180,12 @@ class InvitationTest extends TestCase
         }
 
         $this->assertSame(1, Invitation::acrossTenants()->count());
-        $this->assertSame(OrganizationRole::Editor, Invitation::acrossTenants()->firstOrFail()->role);
+        $this->assertSame(OrganizationRole::Staff, Invitation::acrossTenants()->firstOrFail()->role);
     }
 
     public function test_an_invalid_role_is_rejected(): void
     {
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson("/api/v1/organizations/{$this->organization->id}/invitations", [
                 'email' => 'new@example.com',
                 'role' => 'superuser',
@@ -205,7 +205,7 @@ class InvitationTest extends TestCase
 
         $mailable->assertHasSubject('テスト商店 への招待');
         $mailable->assertSeeInHtml('テスト商店');
-        $mailable->assertSeeInHtml('編集者');
+        $mailable->assertSeeInHtml('スタッフ');
         $mailable->assertSeeInHtml('https://meo.stoc-plus.site/invitations/test-token', false);
         $mailable->assertSeeInText('招待');
     }
@@ -214,10 +214,10 @@ class InvitationTest extends TestCase
     {
         // Tests use the array transport, so this exercises the notification,
         // the mailable and the view together.
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson("/api/v1/organizations/{$this->organization->id}/invitations", [
                 'email' => 'new@example.com',
-                'role' => 'editor',
+                'role' => 'staff',
             ])
             ->assertCreated();
 
@@ -236,7 +236,7 @@ class InvitationTest extends TestCase
             ->assertOk()
             ->assertJsonPath('invitation.email', 'new@example.com')
             ->assertJsonPath('invitation.organization.name', 'テスト商店')
-            ->assertJsonPath('invitation.role_label', '編集者')
+            ->assertJsonPath('invitation.role_label', 'スタッフ')
             ->assertJsonPath('invitation.requires_registration', true);
     }
 
@@ -261,7 +261,7 @@ class InvitationTest extends TestCase
         $user = User::where('email', 'new@example.com')->firstOrFail();
 
         $this->assertSame('新人 太郎', $user->name);
-        $this->assertSame(OrganizationRole::Editor, $user->roleIn($this->organization));
+        $this->assertSame(OrganizationRole::Staff, $user->roleIn($this->organization));
         $this->assertNotNull($invitation->refresh()->accepted_at);
         $this->assertAuthenticatedAs($user);
     }
@@ -279,13 +279,13 @@ class InvitationTest extends TestCase
     public function test_an_existing_user_accepts_while_signed_in(): void
     {
         $user = User::factory()->create(['email' => 'known@example.com']);
-        [$invitation, $token] = $this->invite('known@example.com', OrganizationRole::Admin);
+        [$invitation, $token] = $this->invite('known@example.com', OrganizationRole::OrgAdmin);
 
         $this->actingAs($user)
             ->postJson("/api/v1/invitations/{$token}/accept")
             ->assertOk();
 
-        $this->assertSame(OrganizationRole::Admin, $user->roleIn($this->organization));
+        $this->assertSame(OrganizationRole::OrgAdmin, $user->roleIn($this->organization));
         $this->assertNotNull($invitation->refresh()->accepted_at);
     }
 
@@ -351,7 +351,7 @@ class InvitationTest extends TestCase
             ->assertJsonPath('invitation.requires_registration', false);
     }
 
-    public function test_an_admin_lists_the_outstanding_invitations(): void
+    public function test_an_org_admin_lists_the_outstanding_invitations(): void
     {
         Invitation::factory()->create([
             'organization_id' => $this->organization->id,
@@ -366,21 +366,21 @@ class InvitationTest extends TestCase
             'email' => 'elsewhere@example.com',
         ]);
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->getJson("/api/v1/organizations/{$this->organization->id}/invitations")
             ->assertOk()
             ->assertJsonCount(1, 'invitations')
             ->assertJsonPath('invitations.0.email', 'pending@example.com');
     }
 
-    public function test_an_editor_cannot_list_the_invitations(): void
+    public function test_a_location_admin_cannot_list_the_invitations(): void
     {
-        $this->actingAs($this->member('editor'))
+        $this->actingAs($this->member('location_admin'))
             ->getJson("/api/v1/organizations/{$this->organization->id}/invitations")
             ->assertForbidden();
     }
 
-    public function test_an_admin_revokes_an_invitation_and_the_link_stops_working(): void
+    public function test_an_org_admin_revokes_an_invitation_and_the_link_stops_working(): void
     {
         [$plain, $hashed] = Invitation::generateToken();
 
@@ -389,7 +389,7 @@ class InvitationTest extends TestCase
             'token' => $hashed,
         ]);
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->deleteJson("/api/v1/organizations/{$this->organization->id}/invitations/{$invitation->id}")
             ->assertNoContent();
 
@@ -404,7 +404,7 @@ class InvitationTest extends TestCase
             'organization_id' => $this->organization->id,
         ]);
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->deleteJson("/api/v1/organizations/{$this->organization->id}/invitations/{$invitation->id}")
             ->assertStatus(422);
 
@@ -417,7 +417,7 @@ class InvitationTest extends TestCase
             'organization_id' => Organization::factory()->create()->id,
         ]);
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->deleteJson("/api/v1/organizations/{$this->organization->id}/invitations/{$foreign->id}")
             ->assertNotFound();
 

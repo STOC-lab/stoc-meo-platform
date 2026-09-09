@@ -31,7 +31,7 @@ class AuthEndpointsTest extends TestCase
         $user = $this->user();
         $plan = Plan::factory()->create(['code' => 'meo_light', 'name' => 'MEO LIGHT']);
         $organization = Organization::factory()->onPlan($plan)->create(['name' => 'テスト商店']);
-        $organization->users()->attach($user, ['role' => 'admin']);
+        $organization->users()->attach($user, ['role' => 'org_admin']);
 
         $this->fromSpa()->postJson('/api/v1/auth/login', [
             'email' => $user->email,
@@ -40,7 +40,7 @@ class AuthEndpointsTest extends TestCase
             ->assertOk()
             ->assertJsonPath('user.email', $user->email)
             ->assertJsonPath('organizations.0.name', 'テスト商店')
-            ->assertJsonPath('organizations.0.role', 'admin')
+            ->assertJsonPath('organizations.0.role', 'org_admin')
             ->assertJsonPath('organizations.0.plan.code', 'meo_light');
 
         $this->assertAuthenticatedAs($user);

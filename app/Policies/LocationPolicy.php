@@ -8,10 +8,10 @@ use App\Models\User;
 use App\Support\Tenancy;
 
 /**
- * Store fronts are read by every member and edited by editors, who maintain
- * the details that appear on the Google Business Profile. Adding or removing
- * a store front changes what the organization is billed for, so it stays with
- * administrators.
+ * Store fronts are read by every member and edited from the store-manager rank
+ * up, since keeping the details that appear on the Google Business Profile
+ * current is a manager's job. Adding or removing a store front changes what the
+ * organization is billed for, so it stays with organization administrators.
  */
 class LocationPolicy
 {
@@ -29,17 +29,17 @@ class LocationPolicy
 
     public function create(User $user): bool
     {
-        return $this->hasRole($user, OrganizationRole::Admin);
+        return $this->hasRole($user, OrganizationRole::OrgAdmin);
     }
 
     public function update(User $user, Location $location): bool
     {
-        return $this->belongsToTenant($location) && $this->hasRole($user, OrganizationRole::Editor);
+        return $this->belongsToTenant($location) && $this->hasRole($user, OrganizationRole::LocationAdmin);
     }
 
     public function delete(User $user, Location $location): bool
     {
-        return $this->belongsToTenant($location) && $this->hasRole($user, OrganizationRole::Admin);
+        return $this->belongsToTenant($location) && $this->hasRole($user, OrganizationRole::OrgAdmin);
     }
 
     protected function hasRole(User $user, OrganizationRole $role): bool

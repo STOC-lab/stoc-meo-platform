@@ -78,11 +78,11 @@ class LocationCrudTest extends TestCase
             ->assertJsonPath('location.name', '渋谷店');
     }
 
-    public function test_an_admin_creates_a_store_front(): void
+    public function test_an_org_admin_creates_a_store_front(): void
     {
         $brand = Brand::factory()->create(['organization_id' => $this->organization->id]);
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson($this->url(), [
                 'name' => '渋谷店',
                 'brand_id' => $brand->id,
@@ -105,7 +105,7 @@ class LocationCrudTest extends TestCase
 
     public function test_a_store_front_may_be_created_without_a_brand_or_a_profile(): void
     {
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson($this->url(), ['name' => '渋谷店'])
             ->assertCreated()
             ->assertJsonPath('location.brand', null)
@@ -114,7 +114,7 @@ class LocationCrudTest extends TestCase
 
     public function test_the_store_front_name_is_required(): void
     {
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson($this->url(), [])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('name');
@@ -124,7 +124,7 @@ class LocationCrudTest extends TestCase
     {
         $foreign = Brand::factory()->create(['organization_id' => Organization::factory()->create()->id]);
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson($this->url(), ['name' => '渋谷店', 'brand_id' => $foreign->id])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('brand_id');
@@ -134,26 +134,26 @@ class LocationCrudTest extends TestCase
     {
         $this->location(['gbp_location_id' => 'locations/1234567890']);
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->postJson($this->url(), ['name' => '渋谷店', 'gbp_location_id' => 'locations/1234567890'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('gbp_location_id');
     }
 
-    public function test_an_editor_cannot_create_a_store_front(): void
+    public function test_a_location_admin_cannot_create_a_store_front(): void
     {
-        $this->actingAs($this->member('editor'))
+        $this->actingAs($this->member('location_admin'))
             ->postJson($this->url(), ['name' => '渋谷店'])
             ->assertForbidden();
 
         $this->assertDatabaseCount('locations', 0);
     }
 
-    public function test_an_editor_updates_a_store_front(): void
+    public function test_a_location_admin_updates_a_store_front(): void
     {
         $location = $this->location(['name' => '旧店名']);
 
-        $this->actingAs($this->member('editor'))
+        $this->actingAs($this->member('location_admin'))
             ->patchJson($this->url("/{$location->id}"), ['name' => '渋谷店', 'phone' => '03-0000-0000'])
             ->assertOk()
             ->assertJsonPath('location.name', '渋谷店');
@@ -168,7 +168,7 @@ class LocationCrudTest extends TestCase
     {
         $location = $this->location(['name' => '渋谷店', 'address' => '東京都渋谷区1-2-3']);
 
-        $this->actingAs($this->member('editor'))
+        $this->actingAs($this->member('location_admin'))
             ->patchJson($this->url("/{$location->id}"), ['phone' => '03-0000-0000'])
             ->assertOk();
 
@@ -179,38 +179,48 @@ class LocationCrudTest extends TestCase
     {
         $location = $this->location(['gbp_location_id' => 'locations/1234567890']);
 
-        $this->actingAs($this->member('editor'))
+        $this->actingAs($this->member('location_admin'))
             ->patchJson($this->url("/{$location->id}"), ['gbp_location_id' => 'locations/1234567890'])
             ->assertOk();
     }
 
-    public function test_a_viewer_cannot_update_a_store_front(): void
+    public function test_a_staff_member_cannot_update_a_store_front(): void
     {
         $location = $this->location(['name' => '渋谷店']);
 
-        $this->actingAs($this->member('viewer'))
+        $this->actingAs($this->member('staff'))
             ->patchJson($this->url("/{$location->id}"), ['name' => '新宿店'])
             ->assertForbidden();
 
         $this->assertSame('渋谷店', $location->refresh()->name);
     }
 
-    public function test_an_admin_deletes_a_store_front(): void
+    public function test_a_staff_member_may_still_read_the_store_fronts(): void
+    {
+        $this->location(['name' => '渋谷店']);
+
+        $this->actingAs($this->member('staff'))
+            ->getJson($this->url())
+            ->assertOk()
+            ->assertJsonPath('locations.0.name', '渋谷店');
+    }
+
+    public function test_an_org_admin_deletes_a_store_front(): void
     {
         $location = $this->location();
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->deleteJson($this->url("/{$location->id}"))
             ->assertNoContent();
 
         $this->assertDatabaseMissing('locations', ['id' => $location->id]);
     }
 
-    public function test_an_editor_cannot_delete_a_store_front(): void
+    public function test_a_location_admin_cannot_delete_a_store_front(): void
     {
         $location = $this->location();
 
-        $this->actingAs($this->member('editor'))
+        $this->actingAs($this->member('location_admin'))
             ->deleteJson($this->url("/{$location->id}"))
             ->assertForbidden();
 
@@ -221,7 +231,7 @@ class LocationCrudTest extends TestCase
     {
         $foreign = Location::factory()->create(['organization_id' => Organization::factory()->create()->id]);
 
-        $this->actingAs($this->member('admin'))
+        $this->actingAs($this->member('org_admin'))
             ->getJson($this->url("/{$foreign->id}"))
             ->assertNotFound();
     }
