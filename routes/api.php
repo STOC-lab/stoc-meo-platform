@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AlertController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BillingController;
 use App\Http\Controllers\Api\V1\BrandController;
@@ -97,6 +98,9 @@ Route::prefix('v1')
 
                     Route::delete('keywords/{keyword}', [KeywordController::class, 'destroy'])
                         ->name('api.v1.keywords.destroy');
+
+                    Route::post('keywords/{keyword}/check', [KeywordController::class, 'check'])
+                        ->name('api.v1.keywords.check');
                 });
             });
 
@@ -172,6 +176,23 @@ Route::prefix('v1')
                 Route::middleware(['role:location_admin', 'feature:gbp.post.monthly_limit'])->group(function () {
                     Route::post('gbp-posts', [GbpPostController::class, 'store'])
                         ->name('api.v1.gbp-posts.store');
+                });
+            });
+
+        // What the organization needs to know about: a rank that fell, a
+        // connection that needs reconnecting. Raised by the jobs that notice
+        // them, so there is nothing to create here.
+        Route::prefix('locations/{location}')
+            ->scopeBindings()
+            ->group(function () {
+                Route::middleware('role:viewer')->group(function () {
+                    Route::get('alerts', [AlertController::class, 'index'])
+                        ->name('api.v1.alerts.index');
+                });
+
+                Route::middleware('role:staff')->group(function () {
+                    Route::match(['put', 'patch'], 'alerts/{alert}', [AlertController::class, 'update'])
+                        ->name('api.v1.alerts.update');
                 });
             });
 

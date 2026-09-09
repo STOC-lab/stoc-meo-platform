@@ -89,6 +89,14 @@ class Location extends Model
     }
 
     /**
+     * @return HasMany<Alert, $this>
+     */
+    public function alerts(): HasMany
+    {
+        return $this->hasMany(Alert::class);
+    }
+
+    /**
      * @return HasMany<MeoScore, $this>
      */
     public function meoScores(): HasMany

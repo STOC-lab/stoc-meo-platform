@@ -13,8 +13,9 @@ import { useOrganizationStore } from '@/stores/organization';
 
 const roleLabels: Record<string, string> = {
     owner: 'オーナー',
-    admin: '管理者',
-    editor: '編集者',
+    org_admin: '組織管理者',
+    location_admin: '店舗管理者',
+    staff: 'スタッフ',
     viewer: '閲覧者',
 };
 

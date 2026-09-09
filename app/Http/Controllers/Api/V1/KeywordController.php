@@ -7,6 +7,7 @@ use App\Exceptions\QuotaExceededException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreKeywordRequest;
 use App\Http\Requests\UpdateKeywordRequest;
+use App\Jobs\FetchDailyRankingsJob;
 use App\Models\Keyword;
 use App\Models\Location;
 use App\Support\Tenancy;
@@ -89,6 +90,25 @@ class KeywordController extends Controller
         $keyword->delete();
 
         return response()->noContent();
+    }
+
+    /**
+     * Check one keyword's rank now rather than waiting for tonight's sweep.
+     *
+     * The same job the sweep uses does the work, so a manual check and a
+     * scheduled one produce the same kind of row and cannot drift apart.
+     */
+    public function check(Location $location, Keyword $keyword): JsonResponse
+    {
+        $this->authorizeLocation($location);
+        $this->authorize('update', $keyword);
+
+        FetchDailyRankingsJob::dispatch($keyword);
+
+        return response()->json([
+            'message' => '順位の取得を開始しました。',
+            'keyword' => $this->present($keyword),
+        ], 202);
     }
 
     /**

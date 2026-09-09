@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Menu, Rocket, X } from 'lucide-react';
 import { Link, Outlet } from 'react-router';
 
+import { LocationSwitcher } from '@/components/location-switcher';
 import { OrganizationSwitcher } from '@/components/organization-switcher';
 import { SidebarNav } from '@/components/sidebar-nav';
 import { UserMenu } from '@/components/user-menu';
@@ -62,6 +63,7 @@ export function AppShell() {
                         <Menu aria-hidden="true" />
                     </Button>
                     <OrganizationSwitcher />
+                    <LocationSwitcher />
                     <div className="ml-auto">
                         <UserMenu />
                     </div>
