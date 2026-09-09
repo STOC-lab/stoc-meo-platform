@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * A single store front, mapped to its Google Business Profile location.
@@ -69,6 +70,38 @@ class Location extends Model
     public function competitors(): HasMany
     {
         return $this->hasMany(Competitor::class);
+    }
+
+    /**
+     * @return HasOne<GbpAccount, $this>
+     */
+    public function gbpAccount(): HasOne
+    {
+        return $this->hasOne(GbpAccount::class);
+    }
+
+    /**
+     * @return HasMany<Review, $this>
+     */
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
+
+    /**
+     * @return HasMany<GbpPost, $this>
+     */
+    public function gbpPosts(): HasMany
+    {
+        return $this->hasMany(GbpPost::class);
+    }
+
+    /**
+     * @return HasMany<GbpPerformanceMetric, $this>
+     */
+    public function gbpPerformanceMetrics(): HasMany
+    {
+        return $this->hasMany(GbpPerformanceMetric::class);
     }
 
     /**

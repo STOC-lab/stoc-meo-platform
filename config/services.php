@@ -45,6 +45,15 @@ return [
         'timeout' => env('DATAFORSEO_TIMEOUT', 30),
     ],
 
+    // The Business Profile connection. The scope is what the whole GBP module
+    // runs on, and access_type=offline is what makes Google hand back a
+    // refresh token at all — without it the connection dies within the hour.
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_REDIRECT_URI'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

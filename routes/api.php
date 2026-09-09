@@ -4,12 +4,16 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BillingController;
 use App\Http\Controllers\Api\V1\BrandController;
 use App\Http\Controllers\Api\V1\CompetitorController;
+use App\Http\Controllers\Api\V1\GbpPerformanceController;
+use App\Http\Controllers\Api\V1\GbpPostController;
+use App\Http\Controllers\Api\V1\GoogleConnectionController;
 use App\Http\Controllers\Api\V1\HeatmapController;
 use App\Http\Controllers\Api\V1\InvitationController;
 use App\Http\Controllers\Api\V1\KeywordController;
 use App\Http\Controllers\Api\V1\LocationController;
 use App\Http\Controllers\Api\V1\MemberController;
 use App\Http\Controllers\Api\V1\ReportController;
+use App\Http\Controllers\Api\V1\ReviewController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -34,6 +38,14 @@ Route::prefix('v1')->group(function () {
     Route::post('invitations/{token}/accept', [InvitationController::class, 'accept'])
         ->middleware('throttle:10,1')
         ->name('api.v1.invitations.accept');
+
+    // The browser arrives here from Google's consent screen carrying nothing
+    // of ours but the state we put in the request, so this route has neither
+    // the tenant middleware nor a session to rely on. The state is what says
+    // which store front was being connected.
+    Route::get('auth/google/callback', [GoogleConnectionController::class, 'callback'])
+        ->middleware('throttle:30,1')
+        ->name('api.v1.auth.google.callback');
 
     // The switcher needs the membership list before an organization can be
     // chosen, so these sit outside the tenant middleware.
@@ -105,6 +117,47 @@ Route::prefix('v1')
                 Route::middleware('role:location_admin')->group(function () {
                     Route::post('heatmaps', [HeatmapController::class, 'store'])
                         ->name('api.v1.heatmaps.store');
+                });
+            });
+
+        // Starting the connection is done from inside the application, so
+        // unlike the callback it has a tenant and a signed-in administrator.
+        Route::middleware('role:org_admin')->group(function () {
+            Route::get('auth/google/redirect', [GoogleConnectionController::class, 'redirect'])
+                ->name('api.v1.auth.google.redirect');
+
+            Route::get('auth/google/connection', [GoogleConnectionController::class, 'show'])
+                ->name('api.v1.auth.google.connection');
+        });
+
+        // The Business Profile module. Reading what Google reported is open to
+        // every member; speaking for the business is not.
+        Route::prefix('locations/{location}')
+            ->scopeBindings()
+            ->group(function () {
+                Route::middleware('role:viewer')->group(function () {
+                    Route::get('gbp/performance', [GbpPerformanceController::class, 'index'])
+                        ->name('api.v1.gbp.performance.index');
+
+                    Route::get('reviews', [ReviewController::class, 'index'])
+                        ->name('api.v1.reviews.index');
+
+                    Route::get('gbp-posts', [GbpPostController::class, 'index'])
+                        ->name('api.v1.gbp-posts.index');
+                });
+
+                // Answering a review is day-to-day work for whoever runs the
+                // shop floor.
+                Route::middleware('role:staff')->group(function () {
+                    Route::post('reviews/{review}/reply', [ReviewController::class, 'reply'])
+                        ->name('api.v1.reviews.reply');
+                });
+
+                // Publishing spends the plan's monthly allowance, so it is a
+                // store manager's call and is gated on the plan granting any.
+                Route::middleware(['role:location_admin', 'feature:gbp.post.monthly_limit'])->group(function () {
+                    Route::post('gbp-posts', [GbpPostController::class, 'store'])
+                        ->name('api.v1.gbp-posts.store');
                 });
             });
 

@@ -265,6 +265,24 @@ return [
             'timeout' => 630,
             'nice' => 0,
         ],
+
+        // Everything that talks to Google: review and performance syncs in
+        // their nightly and weekly bursts, and the posts people publish during
+        // the day. They share a queue because they share a rate limit — one
+        // connection's quota is spent by all three.
+        'supervisor-gbp' => [
+            'connection' => 'redis',
+            'queue' => ['gbp'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 192,
+            'tries' => 1,
+            'timeout' => 330,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -292,6 +310,12 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+
+            'supervisor-gbp' => [
+                'maxProcesses' => 5,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
         ],
 
         'local' => [
@@ -309,6 +333,10 @@ return [
 
             'supervisor-reports' => [
                 'maxProcesses' => 1,
+            ],
+
+            'supervisor-gbp' => [
+                'maxProcesses' => 2,
             ],
         ],
     ],
