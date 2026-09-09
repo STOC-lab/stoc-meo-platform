@@ -28,6 +28,20 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'dataforseo' => [
+        'login' => env('DATAFORSEO_LOGIN'),
+        'password' => env('DATAFORSEO_PASSWORD'),
+        // Sandbox answers with the same shape at no cost, and is the default
+        // until live credentials are in place.
+        'sandbox' => env('DATAFORSEO_SANDBOX', true),
+        'base_url' => env('DATAFORSEO_BASE_URL', 'https://api.dataforseo.com'),
+        'sandbox_url' => env('DATAFORSEO_SANDBOX_URL', 'https://sandbox.dataforseo.com'),
+        'location_name' => env('DATAFORSEO_LOCATION_NAME', 'Japan'),
+        'language_code' => env('DATAFORSEO_LANGUAGE_CODE', 'ja'),
+        'depth' => env('DATAFORSEO_DEPTH', 100),
+        'timeout' => env('DATAFORSEO_TIMEOUT', 30),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

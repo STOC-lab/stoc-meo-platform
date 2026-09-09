@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * A single store front, mapped to its Google Business Profile location.
@@ -30,6 +31,22 @@ class Location extends Model
     public function brand(): BelongsTo
     {
         return $this->belongsTo(Brand::class);
+    }
+
+    /**
+     * @return HasMany<Keyword, $this>
+     */
+    public function keywords(): HasMany
+    {
+        return $this->hasMany(Keyword::class);
+    }
+
+    /**
+     * @return HasMany<RankingResult, $this>
+     */
+    public function rankingResults(): HasMany
+    {
+        return $this->hasMany(RankingResult::class);
     }
 
     /**

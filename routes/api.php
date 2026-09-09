@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BillingController;
 use App\Http\Controllers\Api\V1\BrandController;
 use App\Http\Controllers\Api\V1\InvitationController;
+use App\Http\Controllers\Api\V1\KeywordController;
 use App\Http\Controllers\Api\V1\LocationController;
 use App\Http\Controllers\Api\V1\MemberController;
 use Illuminate\Http\Request;
@@ -50,6 +51,36 @@ Route::prefix('v1')
             Route::get('billing/portal', [BillingController::class, 'portal'])
                 ->name('api.v1.billing.portal');
         });
+
+        // Rank tracking hangs off the store front rather than the
+        // organization, which the tenant middleware takes from the
+        // X-Organization-Id header or a sole membership. The whole group is
+        // gated on the plan including ranking at all.
+        Route::prefix('locations/{location}')
+            ->middleware('feature:ranking.enabled')
+            ->scopeBindings()
+            ->group(function () {
+                Route::middleware('role:viewer')->group(function () {
+                    Route::get('keywords', [KeywordController::class, 'index'])
+                        ->name('api.v1.keywords.index');
+
+                    Route::get('keywords/{keyword}', [KeywordController::class, 'show'])
+                        ->name('api.v1.keywords.show');
+                });
+
+                // Choosing what to track is a store manager's job, the same
+                // rank that maintains the store front itself.
+                Route::middleware('role:location_admin')->group(function () {
+                    Route::post('keywords', [KeywordController::class, 'store'])
+                        ->name('api.v1.keywords.store');
+
+                    Route::match(['put', 'patch'], 'keywords/{keyword}', [KeywordController::class, 'update'])
+                        ->name('api.v1.keywords.update');
+
+                    Route::delete('keywords/{keyword}', [KeywordController::class, 'destroy'])
+                        ->name('api.v1.keywords.destroy');
+                });
+            });
 
         // Everything below hangs off the organization in the URL, which is
         // also what the tenant middleware pins the request to. Scoped bindings

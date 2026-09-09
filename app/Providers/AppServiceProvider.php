@@ -3,7 +3,11 @@
 namespace App\Providers;
 
 use App\Models\Organization;
+use App\Services\Ranking\DataForSEOProvider;
+use App\Services\Ranking\FallbackProvider;
+use App\Services\Ranking\RankProviderRouter;
 use App\Support\Tenancy;
+use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Cashier\Cashier;
 
@@ -19,6 +23,25 @@ class AppServiceProvider extends ServiceProvider
         // The webhook route is declared in bootstrap/app.php so it can point at
         // this application's controller.
         Cashier::ignoreRoutes();
+
+        $this->registerRankProviders();
+    }
+
+    /**
+     * Rank sources are tried in the order registered, so the one that cannot
+     * fail goes last and every check ends with something to record.
+     */
+    protected function registerRankProviders(): void
+    {
+        $this->app->singleton(DataForSEOProvider::class, fn ($app) => new DataForSEOProvider(
+            $app->make(HttpFactory::class),
+            (array) $app['config']->get('services.dataforseo', []),
+        ));
+
+        $this->app->singleton(RankProviderRouter::class, fn ($app) => new RankProviderRouter([
+            $app->make(DataForSEOProvider::class),
+            $app->make(FallbackProvider::class),
+        ]));
     }
 
     /**

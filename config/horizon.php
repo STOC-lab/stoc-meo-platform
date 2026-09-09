@@ -210,6 +210,25 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+
+        // Rank checks are outbound HTTP calls that arrive in one nightly
+        // burst. They get their own supervisor so a slow provider cannot
+        // starve the fast jobs on the default queue, and a longer timeout
+        // than those jobs would ever need. Retries are the job's own
+        // business, so tries stays at 1 here.
+        'supervisor-rankings' => [
+            'connection' => 'redis',
+            'queue' => ['rankings'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 1,
+            'timeout' => 180,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -219,11 +238,21 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+
+            'supervisor-rankings' => [
+                'maxProcesses' => 5,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
         ],
 
         'local' => [
             'supervisor-1' => [
                 'maxProcesses' => 3,
+            ],
+
+            'supervisor-rankings' => [
+                'maxProcesses' => 2,
             ],
         ],
     ],
