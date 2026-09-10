@@ -203,6 +203,37 @@ class StripeWebhookTest extends TestCase
         ]);
     }
 
+    public function test_a_new_subscription_moves_the_organization_onto_the_plan_it_paid_for(): void
+    {
+        $free = $this->plan('meo_free', 'price_free');
+        $bought = $this->plan('meo_light', 'price_light');
+
+        $organization = Organization::factory()->onPlan($free)->create([
+            'stripe_id' => 'cus_test123',
+        ]);
+
+        // Checkout does not reliably follow with customer.subscription.updated,
+        // so created has to be enough on its own.
+        $this->postJson('/stripe/webhook', $this->event(
+            'customer.subscription.created',
+            $this->subscriptionObject('cus_test123', 'price_light'),
+        ))->assertOk();
+
+        $organization->refresh();
+
+        $this->assertSame($bought->id, $organization->plan_id);
+        $this->assertSame('sub_test123', $organization->stripe_subscription_id);
+        $this->assertSame(Organization::STATUS_ACTIVE, $organization->status);
+
+        // Cashier's own bookkeeping still runs.
+        $this->assertDatabaseHas('subscriptions', [
+            'organization_id' => $organization->id,
+            'stripe_id' => 'sub_test123',
+            'stripe_price' => 'price_light',
+            'stripe_status' => 'active',
+        ]);
+    }
+
     public function test_a_past_due_subscription_holds_the_organization(): void
     {
         $plan = $this->plan('meo_light', 'price_light');

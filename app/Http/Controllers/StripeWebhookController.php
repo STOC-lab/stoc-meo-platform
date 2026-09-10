@@ -71,6 +71,23 @@ class StripeWebhookController extends CashierWebhookController
     }
 
     /**
+     * A new subscription: let Cashier write the subscription row first, then
+     * mirror the outcome onto the organization.
+     *
+     * Checkout does not reliably follow with `customer.subscription.updated`,
+     * so this is what actually moves an organization onto the plan it just
+     * paid for whenever the session itself carried no metadata.
+     */
+    protected function handleCustomerSubscriptionCreated(array $payload)
+    {
+        parent::handleCustomerSubscriptionCreated($payload);
+
+        $this->mirrorOntoOrganization($payload['data']['object']);
+
+        return $this->ok();
+    }
+
+    /**
      * Plan or status changes: let Cashier update the subscription row first,
      * then mirror the outcome onto the organization.
      */
@@ -78,18 +95,32 @@ class StripeWebhookController extends CashierWebhookController
     {
         parent::handleCustomerSubscriptionUpdated($payload);
 
-        $subscription = $payload['data']['object'];
-        $organization = $this->organizationFor($subscription['customer'] ?? null);
-
-        if ($organization !== null) {
-            $organization->forceFill([
-                'stripe_subscription_id' => $subscription['id'],
-                'plan_id' => $this->planFromSubscription($subscription) ?? $organization->plan_id,
-                'status' => $this->statusFor($subscription['status'] ?? null, $organization),
-            ])->save();
-        }
+        $this->mirrorOntoOrganization($payload['data']['object']);
 
         return $this->ok();
+    }
+
+    /**
+     * Carry a subscription's price and status back onto the organization it
+     * belongs to. The plan is read from the price rather than from metadata,
+     * so a subscription created in Stripe's dashboard lands on the right plan
+     * too.
+     *
+     * @param  array<string, mixed>  $subscription
+     */
+    protected function mirrorOntoOrganization(array $subscription): void
+    {
+        $organization = $this->organizationFor($subscription['customer'] ?? null);
+
+        if ($organization === null) {
+            return;
+        }
+
+        $organization->forceFill([
+            'stripe_subscription_id' => $subscription['id'],
+            'plan_id' => $this->planFromSubscription($subscription) ?? $organization->plan_id,
+            'status' => $this->statusFor($subscription['status'] ?? null, $organization),
+        ])->save();
     }
 
     /**
