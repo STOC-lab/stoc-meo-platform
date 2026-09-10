@@ -8,6 +8,26 @@ Cashier's customer model is `Organization`, not `User` — set in
 the foreign key. Cashier's own routes are ignored; the webhook route is declared
 in `bootstrap/app.php` so it points at this application's controller.
 
+### Checkout metadata goes to two different places
+
+Cashier's `withMetadata()` writes `subscription_data.metadata`, which reaches
+the `customer.subscription.*` events and nothing else. The Checkout session's
+own `metadata` — what `checkout.session.completed` carries — is only set by a
+session option passed to `checkout()`. `BillingService::checkoutUrl()` sends
+both, and it has to: with only the first, `session.metadata` arrives empty,
+the webhook falls back to the Stripe customer for the organization and cannot
+tell which plan was bought, so `plan_id` silently keeps its old value.
+
+Do not assume a following `customer.subscription.updated` will repair it. A
+real test-mode Checkout fired `customer.subscription.created` and then
+`checkout.session.completed`, and no `updated` at all. Anything that has to be
+true after a purchase belongs on `created` as well; both go through
+`mirrorOntoOrganization()`, which reads the plan from the price rather than
+from metadata.
+
+The endpoint must therefore be subscribed to `customer.subscription.created`.
+It was not, until 2026-09-10.
+
 ## Timezone
 
 `config/app.php` reads `env('APP_TIMEZONE', 'UTC')`, and the deployment sets
