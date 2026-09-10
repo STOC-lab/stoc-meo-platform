@@ -16,6 +16,14 @@ class OrganizationInvitationNotification extends Notification implements ShouldQ
 {
     use Queueable;
 
+    /**
+     * An invitation can be accepted, revoked or expired away between the send
+     * and the worker picking the job up, and the serialised model is then gone.
+     * That is an email nobody wants any more, not a failure to retry, so the
+     * job is dropped instead of landing in `failed_jobs`.
+     */
+    public bool $deleteWhenMissingModels = true;
+
     public function __construct(
         public Invitation $invitation,
         public string $acceptUrl,

@@ -62,14 +62,17 @@ return [
     | Here you may specify the default timezone for your application, which
     | will be used by the PHP date and date-time functions.
     |
-    | This stays UTC. Every timestamp already in the database was written by a
-    | UTC clock, so moving the application to Asia/Tokyo would reinterpret all
-    | of them rather than convert them. The schedule is what actually needs to
-    | run on Tokyo time, and each task in routes/console.php says so itself.
+    | This is Asia/Tokyo. The product is sold in Japan, and the host and MySQL
+    | are on JST too, so a stored timestamp, NOW() and the date a shop owner
+    | reads are all the same date without anything converting between them.
+    |
+    | The application ran on UTC until 2026-09-09 18:18 JST and the rows from
+    | before then were left as they were written; see .ai/rules/config-and-env.md
+    | before reading anything into the earliest history.
     |
     */
 
-    'timezone' => env('APP_TIMEZONE', 'UTC'),
+    'timezone' => env('APP_TIMEZONE', 'Asia/Tokyo'),
 
     /*
     |--------------------------------------------------------------------------

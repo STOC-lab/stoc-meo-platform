@@ -423,4 +423,22 @@ class InvitationTest extends TestCase
 
         $this->assertDatabaseHas('invitations', ['id' => $foreign->id]);
     }
+
+    public function test_a_queued_invitation_email_is_dropped_when_the_invitation_is_gone(): void
+    {
+        config(['queue.default' => 'database']);
+
+        [$invitation] = $this->invite('new@example.com');
+
+        Notification::route('mail', $invitation->email)
+            ->notify(new OrganizationInvitationNotification($invitation, 'https://example.test/invitations/token'));
+
+        // Accepted, revoked or expired away before the worker got to it.
+        $invitation->delete();
+
+        $this->artisan('queue:work', ['--once' => true])->assertSuccessful();
+
+        $this->assertDatabaseCount('jobs', 0);
+        $this->assertDatabaseCount('failed_jobs', 0);
+    }
 }

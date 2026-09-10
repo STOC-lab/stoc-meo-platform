@@ -335,6 +335,26 @@ class AiAnalysisTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_the_sweep_queues_no_model_work_when_no_provider_is_configured(): void
+    {
+        Queue::fake();
+
+        config(['ai.claude.api_key' => null]);
+
+        // The score needs no provider, so it still runs; everything that calls
+        // a model would only throw on the worker and land in failed_jobs.
+        $this->artisan('ai:insights daily')
+            ->expectsOutputToContain('No AI provider is configured')
+            ->assertSuccessful();
+
+        Queue::assertPushed(CalculateMEOScoreJob::class, 1);
+        Queue::assertNotPushed(GenerateDailyAnalysisJob::class);
+
+        $this->artisan('ai:insights weekly')->assertSuccessful();
+
+        Queue::assertNotPushed(GenerateWeeklyAnalysisJob::class);
+    }
+
     public function test_an_unknown_cadence_is_refused(): void
     {
         Queue::fake();

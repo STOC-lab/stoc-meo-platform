@@ -10,6 +10,7 @@ use App\Jobs\GenerateImprovementProposalsJob;
 use App\Jobs\GenerateWeeklyAnalysisJob;
 use App\Models\Location;
 use App\Models\Organization;
+use App\Services\AI\AIProviderFactory;
 use App\Services\FeatureResolver;
 use Illuminate\Console\Command;
 
@@ -20,6 +21,11 @@ use Illuminate\Console\Command;
  * what the rest is written from, it costs nothing but a few queries, and a
  * shop that later upgrades then has history rather than starting blank. Only
  * the parts that call a model are gated on the plan.
+ *
+ * The provider is asked whether it can answer before anything that calls a
+ * model is queued. Without that check an unconfigured deployment dispatches
+ * analysis jobs every night that throw on the first line and land in
+ * `failed_jobs`; the scores, which need no provider, still run.
  */
 class RunAiInsights extends Command
 {
@@ -27,7 +33,7 @@ class RunAiInsights extends Command
 
     protected $description = 'Queue the MEO scores, analyses and improvement proposals of one cadence';
 
-    public function handle(FeatureResolver $features): int
+    public function handle(FeatureResolver $features, AIProviderFactory $ai): int
     {
         $cadence = (string) $this->argument('cadence');
 
@@ -37,12 +43,18 @@ class RunAiInsights extends Command
             return self::FAILURE;
         }
 
+        $aiIsAvailable = $ai->isAvailable();
+
+        if (! $aiIsAvailable) {
+            $this->warn('No AI provider is configured; queueing the MEO scores only.');
+        }
+
         $queued = ['scores' => 0, 'analyses' => 0, 'proposals' => 0];
 
         Location::acrossTenants()
             ->with('organization')
             ->orderBy('id')
-            ->chunkById(200, function ($locations) use ($cadence, $features, &$queued) {
+            ->chunkById(200, function ($locations) use ($cadence, $features, $aiIsAvailable, &$queued) {
                 foreach ($locations as $location) {
                     $organization = $location->organization;
 
@@ -57,7 +69,9 @@ class RunAiInsights extends Command
                         $queued['scores']++;
                     }
 
-                    $queued = $this->queueAiWork($cadence, $location, $organization, $features, $queued);
+                    if ($aiIsAvailable) {
+                        $queued = $this->queueAiWork($cadence, $location, $organization, $features, $queued);
+                    }
                 }
             });
 

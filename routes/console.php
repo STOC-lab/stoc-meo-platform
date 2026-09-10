@@ -8,8 +8,9 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Rank checks run overnight in the market they describe: the application clock
-// is UTC, so the time is pinned to Tokyo rather than left to drift with it.
+// Rank checks run overnight in the market they describe. The application clock
+// is already Tokyo, but every task below pins the zone anyway so the hour is a
+// property of the task rather than of whatever the host is set to.
 Schedule::command('rankings:fetch-daily')
     ->dailyAt('02:00')
     ->timezone('Asia/Tokyo')

@@ -10,22 +10,64 @@ in `bootstrap/app.php` so it points at this application's controller.
 
 ## Timezone
 
-`config/app.php` reads `env('APP_TIMEZONE', 'UTC')`, and the value in use is
-`UTC`. See `queues-and-schedule.md` before changing it: existing timestamps were
-written by a UTC clock, and the schedule already pins Tokyo per task.
+`config/app.php` reads `env('APP_TIMEZONE', 'UTC')`, and the deployment sets
+`Asia/Tokyo`. That is the settled value, not an accident: the product is sold
+in Japan, so the date a shop owner reads is the date they mean, and the host
+and MySQL are on JST too — `@@time_zone` is `SYSTEM`, so `NOW()` and `now()`
+agree without either side converting.
+
+Do not move it back to UTC to match a framework default. Every row written
+since the change is JST, and reinterpreting them is the same mistake in the
+other direction.
+
+### The seam at 2026-09-09 18:18 JST
+
+The application did run on UTC before that. `.env` was edited at
+`2026-09-09 18:18:40 +0900` and the config cache was rebuilt in the same
+second, so rows written before that instant carry UTC timestamps and rows after
+carry JST. Nothing converted the older ones: it was nine hours across a few
+days of pre-launch data, and correcting it was judged worse than recording it.
+
+The consequence is narrow but real. A query whose window crosses that instant
+is comparing two clocks, and a nine-hour gap in the earliest history is that,
+not missing data. Say so rather than silently compensating, and do not use the
+oldest rows as evidence about anything that depends on the hour.
+
+### Tests do not inherit it
+
+`phpunit.xml` pins `APP_TIMEZONE` itself, deliberately, so the suite does not
+move with the host. See `testing.md` before changing what it pins.
 
 ## Which integrations are configured is a runtime question
 
 Providers answer `isAvailable()` from whether their key is present, and the
 application is expected to run with some of them absent. Never assume a key
-exists; ask the provider or the factory. As of the v0.1.0-mvp tag the deployment
-has Stripe (test mode) and Redis configured, and DataForSEO, Google/GBP,
-Anthropic and Instagram unconfigured, with `MAIL_MAILER=log`.
+exists; ask the provider or the factory.
+
+As of 2026-09-10 the deployment has Stripe (test mode), Redis, DataForSEO
+(`DATAFORSEO_SANDBOX=false`, so every keyword check is billed) and SMTP through
+the XServer mailbox that owns the from address. Google/GBP, Anthropic and
+Instagram have no credentials.
 
 ## Keep .env.example in step
 
 A key added to `config/` belongs in `.env.example` the same commit, with the
 value the deployment actually uses when that value is load-bearing.
+
+## Two keys in `.env` that nothing reads
+
+Laravel 11 renamed both of these and kept no alias, so the old name sits in
+`.env` looking effective while the application runs on the default:
+
+- `CACHE_DRIVER` → `CACHE_STORE`. This one bites: `.env` says `redis` under the
+  old name, and `config('cache.default')` answers `database`. Queue and session
+  *are* on Redis, which is what makes it look configured.
+- `MAIL_ENCRYPTION` → `MAIL_SCHEME`. Harmless only by luck — `MailManager`
+  falls back to `smtps` whenever the port is 465, which is the port in use.
+
+When a `.env` value seems not to take effect, check the key still exists in
+`config/` before looking anywhere else. `.env.example` carries the correct
+names.
 
 ## Cached config
 

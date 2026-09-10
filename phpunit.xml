@@ -23,8 +23,12 @@
             The suite asserts on dates, so its clock is pinned rather than
             inherited: config/app.php reads APP_TIMEZONE, and a host whose .env
             names a different zone would otherwise move every date under test.
+
+            The value matches the deployment's own clock so that a date
+            boundary the product gets wrong is a date boundary the suite gets
+            wrong too. Pinning it is what matters; do not remove force="true".
         -->
-        <env name="APP_TIMEZONE" value="UTC" force="true"/>
+        <env name="APP_TIMEZONE" value="Asia/Tokyo" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>

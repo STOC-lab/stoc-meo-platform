@@ -18,7 +18,9 @@ The fix has to happen before the framework boots, so it belongs in
 ## The suite pins its own environment
 
 `phpunit.xml` forces `CACHE_STORE`, `SESSION_DRIVER`, `QUEUE_CONNECTION` and
-`APP_TIMEZONE`, and `tests/bootstrap.php` re-pins the drivers into `$_SERVER`
+`APP_TIMEZONE` — the last to `Asia/Tokyo`, matching the deployment, so a date
+boundary the product gets wrong is one the suite gets wrong too — and
+`tests/bootstrap.php` re-pins the drivers into `$_SERVER`
 because Laravel's environment repository consults it before `getenv()`. A
 durable cache carries rate limiter counters between tests; a real queue
 connection swallows the notifications tests assert were delivered; an inherited
