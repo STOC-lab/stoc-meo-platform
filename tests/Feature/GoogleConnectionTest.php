@@ -9,14 +9,20 @@ use App\Models\GbpAccount;
 use App\Models\Location;
 use App\Models\Organization;
 use App\Models\User;
+use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\Psr7\Request as GuzzleRequest;
+use GuzzleHttp\Psr7\Response as GuzzleResponse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\User as SocialiteUser;
 use Mockery;
+use RuntimeException;
 use Tests\TestCase;
+use Throwable;
 
 /**
  * The OAuth round trip, with Socialite mocked throughout; nothing here reaches
@@ -78,6 +84,38 @@ class GoogleConnectionTest extends TestCase
         Socialite::shouldReceive('driver')->with('google')->andReturn($driver);
 
         return $user;
+    }
+
+    /**
+     * The same driver, but with the token exchange refusing.
+     *
+     * `redirect()` still has to answer: the failure happens on the way back,
+     * so the test has to get through the outward half first.
+     */
+    protected function fakeSocialiteFailure(Throwable $failure): void
+    {
+        $driver = Mockery::mock();
+        $driver->shouldReceive('stateless')->andReturnSelf();
+        $driver->shouldReceive('scopes')->andReturnSelf();
+        $driver->shouldReceive('with')->andReturnSelf();
+        $driver->shouldReceive('redirect')->andReturn(
+            new RedirectResponse('https://accounts.google.com/o/oauth2/auth?client_id=test-client')
+        );
+        $driver->shouldReceive('user')->andThrow($failure);
+
+        Socialite::shouldReceive('driver')->with('google')->andReturn($driver);
+    }
+
+    /**
+     * Google's refusal, shaped the way Guzzle raises it — through `create()`,
+     * the same constructor its HttpErrors middleware uses.
+     */
+    protected function googleRefusal(int $status, string $body): RequestException
+    {
+        return RequestException::create(
+            new GuzzleRequest('POST', 'https://oauth2.googleapis.com/token'),
+            new GuzzleResponse($status, [], $body),
+        );
     }
 
     /**
@@ -282,5 +320,62 @@ class GoogleConnectionTest extends TestCase
     {
         $this->getJson('/api/v1/auth/google/redirect?location_id='.$this->location->id)
             ->assertUnauthorized();
+    }
+
+    public function test_a_refused_client_secret_is_logged_with_googles_own_error(): void
+    {
+        $this->fakeSocialiteFailure($this->googleRefusal(
+            401,
+            '{"error":"invalid_client","error_description":"The provided client secret is invalid."}',
+        ));
+
+        $state = $this->startConnection();
+
+        Log::spy();
+
+        $this->getJson('/api/v1/auth/google/callback?code=auth-code&state='.$state)
+            ->assertStatus(422);
+
+        Log::shouldHaveReceived('warning')->once()->withArgs(
+            fn (string $message, array $context): bool => $message === 'Google connection callback failed.'
+                && $context['google_error'] === 'invalid_client'
+                && $context['location_id'] === $this->location->id
+        );
+
+        $this->assertSame(0, GbpAccount::acrossTenants()->count());
+    }
+
+    public function test_a_spent_code_is_logged_apart_from_a_refused_client(): void
+    {
+        $this->fakeSocialiteFailure($this->googleRefusal(400, '{"error":"invalid_grant"}'));
+
+        $state = $this->startConnection();
+
+        Log::spy();
+
+        $this->getJson('/api/v1/auth/google/callback?code=auth-code&state='.$state)
+            ->assertStatus(422);
+
+        Log::shouldHaveReceived('warning')->once()->withArgs(
+            fn (string $message, array $context): bool => $context['google_error'] === 'invalid_grant'
+        );
+    }
+
+    public function test_a_failure_that_did_not_come_from_google_is_still_logged(): void
+    {
+        $this->fakeSocialiteFailure(new RuntimeException('the connection timed out'));
+
+        $state = $this->startConnection();
+
+        Log::spy();
+
+        $this->getJson('/api/v1/auth/google/callback?code=auth-code&state='.$state)
+            ->assertStatus(422);
+
+        Log::shouldHaveReceived('warning')->once()->withArgs(
+            fn (string $message, array $context): bool => $context['google_error'] === null
+                && $context['exception'] === RuntimeException::class
+                && $context['reason'] === 'the connection timed out'
+        );
     }
 }

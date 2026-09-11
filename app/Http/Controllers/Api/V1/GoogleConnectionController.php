@@ -8,9 +8,11 @@ use App\Models\GbpAccount;
 use App\Models\Location;
 use App\Services\GBP\GBPConnectionMonitor;
 use App\Support\Tenancy;
+use GuzzleHttp\Exception\RequestException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
 use Throwable;
@@ -107,6 +109,20 @@ class GoogleConnectionController extends Controller
             // Socialite raises InvalidStateException for a tampered round trip
             // and a client exception when Google refuses the code. Neither is
             // worth telling the browser apart: both mean start again.
+            //
+            // Operationally they are not the same thing at all, though. A
+            // spent code is one person clicking twice; a refused client is a
+            // deployment whose every connection will fail the same way. The
+            // browser gets one sentence either way, so this log line is the
+            // only place that difference survives.
+            Log::warning('Google connection callback failed.', [
+                'location_id' => $state['location_id'],
+                'user_id' => $state['user_id'],
+                'exception' => $e::class,
+                'reason' => $e->getMessage(),
+                'google_error' => $this->googleErrorFrom($e),
+            ]);
+
             return response()->json([
                 'message' => 'Googleからの応答を検証できませんでした。もう一度お試しください。',
             ], 422);
@@ -176,6 +192,37 @@ class GoogleConnectionController extends Controller
         $this->monitor->markRestored($account);
 
         return $account;
+    }
+
+    /**
+     * Google's own error code, when the refusal came back from Google.
+     *
+     * The token endpoint answers `invalid_client` for a secret that does not
+     * belong to the client id and `invalid_grant` for a code that is spent or
+     * was issued for another redirect URI. That word is the whole diagnosis,
+     * and Guzzle's exception message truncates the body it sits in, so read it
+     * off the response instead of parsing the message.
+     */
+    protected function googleErrorFrom(Throwable $e): ?string
+    {
+        if (! $e instanceof RequestException || $e->getResponse() === null) {
+            return null;
+        }
+
+        $body = $e->getResponse()->getBody();
+
+        // Guzzle's summariser rewinds after reading, so the stream is
+        // normally at the start already; this is a cheap guard against
+        // arriving here after something else has read it.
+        if ($body->isSeekable()) {
+            $body->rewind();
+        }
+
+        $payload = json_decode((string) $body, true);
+
+        return is_array($payload) && is_string($payload['error'] ?? null)
+            ? $payload['error']
+            : null;
     }
 
     /**
