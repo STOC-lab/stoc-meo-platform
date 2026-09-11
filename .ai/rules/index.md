@@ -12,6 +12,7 @@ touch, before you write code.
 | [queues-and-schedule.md](queues-and-schedule.md) | `app/Jobs/**`, `app/Console/Commands/**`, `routes/console.php` |
 | [ranking.md](ranking.md) | `app/Services/Ranking/**`, `app/Jobs/FetchDailyRankingsJob.php`, `app/Jobs/FetchHeatmapJob.php` |
 | [config-and-env.md](config-and-env.md) | `config/**`, `.env.example`, `bootstrap/**` |
+| [stripe.md](stripe.md) | `app/Http/Controllers/StripeWebhookController.php`, `app/Services/BillingService.php`, `app/Http/Controllers/Api/V1/BillingController.php`, `config/cashier.php` |
 
 A path match alone will miss things. Also run `grep -rin '<keyword>' .ai/rules`
 for whatever you are about to change.
