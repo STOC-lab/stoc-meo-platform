@@ -11,6 +11,7 @@ use App\Services\Ranking\RankProviderRouter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class RankProviderTest extends TestCase
@@ -171,6 +172,97 @@ class RankProviderTest extends TestCase
         $this->provider()->fetch($this->keyword());
     }
 
+    /**
+     * @return array<string, array{int}>
+     */
+    public static function transientStatuses(): array
+    {
+        return [
+            'the concurrency throttle, which answers as 401' => [401],
+            'a request timeout' => [408],
+            'a rate limit' => [429],
+            'an error at the far end' => [500],
+            'the service being unavailable' => [503],
+        ];
+    }
+
+    #[DataProvider('transientStatuses')]
+    public function test_a_momentary_http_status_is_reported_as_transient(int $status): void
+    {
+        Http::fake(['*' => Http::response('', $status)]);
+
+        try {
+            $this->provider()->fetch($this->keyword());
+            $this->fail('The provider was expected to fail.');
+        } catch (RankProviderException $e) {
+            $this->assertTrue($e->isTransient(), "HTTP {$status} should be worth retrying.");
+        }
+    }
+
+    /**
+     * @return array<string, array{int}>
+     */
+    public static function permanentStatuses(): array
+    {
+        return [
+            'a malformed request' => [400],
+            'a forbidden request' => [403],
+            'an endpoint that is not there' => [404],
+        ];
+    }
+
+    #[DataProvider('permanentStatuses')]
+    public function test_a_rejected_request_is_reported_as_permanent(int $status): void
+    {
+        Http::fake(['*' => Http::response('', $status)]);
+
+        try {
+            $this->provider()->fetch($this->keyword());
+            $this->fail('The provider was expected to fail.');
+        } catch (RankProviderException $e) {
+            $this->assertFalse($e->isTransient(), "HTTP {$status} should not be retried.");
+        }
+    }
+
+    public function test_a_dataforseo_error_status_is_read_as_the_http_status_it_carries(): void
+    {
+        Http::fake(['*' => Http::response(['status_code' => 50000, 'status_message' => 'Internal Error'])]);
+
+        try {
+            $this->provider()->fetch($this->keyword());
+            $this->fail('The provider was expected to fail.');
+        } catch (RankProviderException $e) {
+            $this->assertTrue($e->isTransient(), 'DataForSEO 50000 is its own 500.');
+        }
+    }
+
+    public function test_a_dataforseo_rejection_status_is_read_as_the_http_status_it_carries(): void
+    {
+        Http::fake(['*' => Http::response(['status_code' => 40501, 'status_message' => 'Invalid Field'])]);
+
+        try {
+            $this->provider()->fetch($this->keyword());
+            $this->fail('The provider was expected to fail.');
+        } catch (RankProviderException $e) {
+            $this->assertFalse($e->isTransient(), 'DataForSEO 40501 is its own 405.');
+        }
+    }
+
+    public function test_a_task_that_failed_momentarily_is_reported_as_transient(): void
+    {
+        Http::fake(['*' => Http::response([
+            'status_code' => 20000,
+            'tasks' => [['status_code' => 50000, 'status_message' => 'Internal Error']],
+        ])]);
+
+        try {
+            $this->provider()->fetch($this->keyword());
+            $this->fail('The provider was expected to fail.');
+        } catch (RankProviderException $e) {
+            $this->assertTrue($e->isTransient());
+        }
+    }
+
     public function test_the_provider_is_unavailable_without_credentials(): void
     {
         $this->assertFalse($this->provider(['login' => null])->isAvailable());
@@ -230,6 +322,35 @@ class RankProviderTest extends TestCase
         $this->expectException(RankProviderException::class);
 
         $router->fetch($this->keyword());
+    }
+
+    public function test_the_router_raises_a_transient_failure_when_the_caller_will_retry(): void
+    {
+        Http::fake(['*' => Http::response('', 429)]);
+
+        $router = new RankProviderRouter([$this->provider(), new FallbackProvider]);
+
+        $this->expectException(RankProviderException::class);
+
+        $router->fetch($this->keyword(), callerWillRetry: true);
+    }
+
+    public function test_the_router_still_moves_on_from_a_permanent_failure_when_the_caller_will_retry(): void
+    {
+        Http::fake(['*' => Http::response('', 404)]);
+
+        $router = new RankProviderRouter([$this->provider(), new FallbackProvider]);
+
+        $this->assertSame('fallback', $router->fetch($this->keyword(), callerWillRetry: true)->provider);
+    }
+
+    public function test_the_router_takes_the_fallback_for_a_transient_failure_once_the_caller_is_out_of_retries(): void
+    {
+        Http::fake(['*' => Http::response('', 429)]);
+
+        $router = new RankProviderRouter([$this->provider(), new FallbackProvider]);
+
+        $this->assertSame('fallback', $router->fetch($this->keyword(), callerWillRetry: false)->provider);
     }
 
     public function test_the_application_wires_dataforseo_ahead_of_the_fallback(): void

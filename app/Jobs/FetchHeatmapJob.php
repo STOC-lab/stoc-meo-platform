@@ -86,6 +86,10 @@ class FetchHeatmapJob implements ShouldQueue
             $keyword = $run->keyword;
             $rows = [];
 
+            // No callerWillRetry here, unlike the daily sweep: a retry would
+            // re-run every other point of the grid, so one point that could
+            // not be answered takes the fallback rather than costing 48 more
+            // paid searches.
             foreach ($grid->generate($centre, $run->grid_size) as $point) {
                 $rows[] = $this->row($run, $point, $providers->fetch($keyword, $point->coordinate)->rank);
             }

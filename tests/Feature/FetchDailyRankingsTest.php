@@ -9,12 +9,15 @@ use App\Models\Location;
 use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\RankingResult;
+use App\Services\Ranking\RankProviderException;
 use App\Services\Ranking\RankProviderRouter;
 use App\Support\Tenancy;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Queue\Job as QueueJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Mockery;
 use Tests\TestCase;
 
 class FetchDailyRankingsTest extends TestCase
@@ -101,6 +104,73 @@ class FetchDailyRankingsTest extends TestCase
         $this->assertNull($result->rank);
         $this->assertSame('fallback', $result->provider);
         $this->assertSame($keyword->id, $result->keyword_id);
+    }
+
+    /**
+     * A job carrying the attempt number the queue would have given it.
+     */
+    protected function jobOnAttempt(Keyword $keyword, int $attempt): FetchDailyRankingsJob
+    {
+        $job = new FetchDailyRankingsJob($keyword);
+
+        $queueJob = Mockery::mock(QueueJob::class);
+        $queueJob->shouldReceive('attempts')->andReturn($attempt);
+
+        return $job->setJob($queueJob);
+    }
+
+    public function test_a_transient_provider_failure_is_retried_rather_than_recorded_as_a_gap(): void
+    {
+        config(['services.dataforseo.login' => 'login', 'services.dataforseo.password' => 'secret']);
+        Http::fake(['*' => Http::response('', 401)]);
+
+        $keyword = $this->keywordOf($this->organizationOnPlan());
+
+        $this->expectException(RankProviderException::class);
+
+        try {
+            $this->jobOnAttempt($keyword, 1)->handle(
+                app(RankProviderRouter::class),
+                app(Tenancy::class),
+            );
+        } finally {
+            // Nothing is written, so the retry is free to record the real
+            // answer rather than landing beside a "not found" that was not one.
+            $this->assertSame(0, RankingResult::acrossTenants()->count());
+        }
+    }
+
+    public function test_the_last_attempt_records_the_fallback_so_the_day_keeps_one_row(): void
+    {
+        config(['services.dataforseo.login' => 'login', 'services.dataforseo.password' => 'secret']);
+        Http::fake(['*' => Http::response('', 401)]);
+
+        $keyword = $this->keywordOf($this->organizationOnPlan());
+
+        $this->jobOnAttempt($keyword, 3)->handle(
+            app(RankProviderRouter::class),
+            app(Tenancy::class),
+        );
+
+        $result = RankingResult::acrossTenants()->firstOrFail();
+
+        $this->assertNull($result->rank);
+        $this->assertSame('fallback', $result->provider);
+    }
+
+    public function test_a_permanent_provider_failure_takes_the_fallback_without_spending_a_retry(): void
+    {
+        config(['services.dataforseo.login' => 'login', 'services.dataforseo.password' => 'secret']);
+        Http::fake(['*' => Http::response('', 404)]);
+
+        $keyword = $this->keywordOf($this->organizationOnPlan());
+
+        $this->jobOnAttempt($keyword, 1)->handle(
+            app(RankProviderRouter::class),
+            app(Tenancy::class),
+        );
+
+        $this->assertSame('fallback', RankingResult::acrossTenants()->firstOrFail()->provider);
     }
 
     public function test_the_job_leaves_the_tenant_as_it_found_it(): void

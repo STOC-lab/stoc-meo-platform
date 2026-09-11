@@ -39,6 +39,16 @@ class DataForSEOProvider implements RankProviderInterface
     public const STATUS_OK = 20000;
 
     /**
+     * Statuses that describe the moment rather than the request. 401 is here
+     * because DataForSEO answers a burst of live calls from one account with
+     * it as readily as it answers a bad password: on 2026-09-11 three of five
+     * keywords in the same second were served and two were refused, with the
+     * credentials verified good either side of the sweep. Retrying costs one
+     * call; not retrying costs that keyword its day.
+     */
+    public const TRANSIENT_STATUSES = [401, 408, 425, 429];
+
+    /**
      * @param  array<string, mixed>  $config
      */
     public function __construct(
@@ -92,23 +102,30 @@ class DataForSEOProvider implements RankProviderInterface
                 ->acceptJson()
                 ->post(self::ENDPOINT, [$this->task($keyword, $from)]);
         } catch (ConnectionException $e) {
-            throw RankProviderException::for($this->name(), $e->getMessage());
+            throw RankProviderException::transient($this->name(), $e->getMessage());
         }
 
         if ($response->failed()) {
-            throw RankProviderException::for($this->name(), "HTTP {$response->status()}");
+            throw RankProviderException::for(
+                $this->name(),
+                "HTTP {$response->status()}",
+                $this->isTransientStatus($response->status()),
+            );
         }
 
         try {
             $body = (array) $response->json();
         } catch (Throwable $e) {
-            throw RankProviderException::for($this->name(), 'the response was not JSON');
+            // A reply that is not JSON at all is a gateway or a proxy talking,
+            // not DataForSEO rejecting the request.
+            throw RankProviderException::transient($this->name(), 'the response was not JSON');
         }
 
         if (($body['status_code'] ?? null) !== self::STATUS_OK) {
             throw RankProviderException::for(
                 $this->name(),
                 (string) ($body['status_message'] ?? 'unexpected status '.($body['status_code'] ?? 'none')),
+                $this->isTransientStatus($body['status_code'] ?? null),
             );
         }
 
@@ -126,17 +143,42 @@ class DataForSEOProvider implements RankProviderInterface
         $task = $body['tasks'][0] ?? null;
 
         if (! is_array($task)) {
-            throw RankProviderException::for($this->name(), 'the response carried no task');
+            throw RankProviderException::transient($this->name(), 'the response carried no task');
         }
 
         if (($task['status_code'] ?? null) !== self::STATUS_OK) {
             throw RankProviderException::for(
                 $this->name(),
                 (string) ($task['status_message'] ?? 'the task did not complete'),
+                $this->isTransientStatus($task['status_code'] ?? null),
             );
         }
 
         return $task;
+    }
+
+    /**
+     * Whether a status is worth asking again.
+     *
+     * DataForSEO's own codes are its HTTP status with two more digits — 40100
+     * is a 401, 50000 a 500 — so both kinds of status are read the same way
+     * once the extra digits are taken off. Anything the far side blames on
+     * itself counts, along with the throttles listed above; everything else is
+     * a rejected request that would be rejected again.
+     */
+    protected function isTransientStatus(int|string|null $status): bool
+    {
+        if ($status === null) {
+            return false;
+        }
+
+        $status = (int) $status;
+
+        if ($status >= 10000) {
+            $status = intdiv($status, 100);
+        }
+
+        return $status >= 500 || in_array($status, self::TRANSIENT_STATUSES, true);
     }
 
     /**
