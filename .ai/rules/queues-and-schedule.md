@@ -36,8 +36,13 @@ crontab, and adding one would double every task.
 
 ## A command whose provider is unconfigured should say so
 
-`RunAiInsights` has no availability check, so with no `ANTHROPIC_API_KEY` the
-nightly run dispatches jobs that throw and land in `failed_jobs`. When adding a
-command that fans out to a provider, ask the factory
-(`AIProviderFactory::isAvailable()`, `RankProviderInterface::isAvailable()`)
-first and exit cleanly.
+`RunAiInsights` asks `AIProviderFactory::isAvailable()` once, before the chunk
+loop, and skips only the jobs that call a model — the MEO scores still run,
+because they need no provider and are what everything else is written from.
+Without that check an unconfigured deployment dispatched analysis jobs every
+night that threw on the first line and landed in `failed_jobs`.
+
+Copy that shape when adding a command that fans out to a provider: ask the
+factory (`AIProviderFactory::isAvailable()`,
+`RankProviderInterface::isAvailable()`) first, say so on the console, and queue
+the part that does not need it rather than exiting whole.

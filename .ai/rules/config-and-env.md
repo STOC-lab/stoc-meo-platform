@@ -64,26 +64,48 @@ Providers answer `isAvailable()` from whether their key is present, and the
 application is expected to run with some of them absent. Never assume a key
 exists; ask the provider or the factory.
 
-As of 2026-09-10 the deployment has Stripe (test mode), Redis, DataForSEO
-(`DATAFORSEO_SANDBOX=false`, so every keyword check is billed) and SMTP through
-the XServer mailbox that owns the from address. Google/GBP, Anthropic and
-Instagram have no credentials.
+As of 2026-09-14 the deployment has Stripe (test mode), Redis, DataForSEO
+(`DATAFORSEO_SANDBOX=false`, so every keyword check is billed), Resend,
+Google/GBP and Anthropic. Instagram is the only one left with no credentials.
+
+Google/GBP has both halves: `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` with
+`GOOGLE_REDIRECT_URI` pointing at `/api/v1/auth/google/callback`, and one
+connected account in `gbp_accounts`. Being configured is not the same as being
+healthy — the nightly performance sync has been failing on HTTP 429 from
+`businessprofileperformance.googleapis.com`, which is a Google-side per-minute
+quota on the project, not a credential problem. Read the exception before
+blaming the connection.
+
+`ANTHROPIC_API_KEY` is set, and the whole path is known to work end to end:
+`ai:insights daily` queued a `GenerateDailyAnalysisJob`, Horizon ran it off the
+`ai` queue, and the answer landed in `analyses` with `model` recorded as the
+dated id the API returned. The AI results live in `analyses` and
+`improvement_proposals`; there is no `ai_runs` table.
 
 ## Keep .env.example in step
 
 A key added to `config/` belongs in `.env.example` the same commit, with the
 value the deployment actually uses when that value is load-bearing.
 
-## Two keys in `.env` that nothing reads
+## Mail goes through Resend's API
 
-Laravel 11 renamed both of these and kept no alias, so the old name sits in
-`.env` looking effective while the application runs on the default:
+`MAIL_MAILER=resend` and `RESEND_API_KEY`, not SMTP. The from address is still
+`info@stoc-plus.site`, the XServer mailbox that owns the domain, so the change
+is invisible in a received message — what changed is that nothing dials a mail
+host any more. `MAIL_HOST`, `MAIL_PORT`, `MAIL_PASSWORD` and `MAIL_ENCRYPTION`
+are gone from `.env`; a leftover `MAIL_USERNAME` is read by nobody. Do not
+reintroduce SMTP settings to "fix" mail — the Resend transport ignores them.
 
-- `CACHE_DRIVER` → `CACHE_STORE`. This one bites: `.env` says `redis` under the
-  old name, and `config('cache.default')` answers `database`. Queue and session
-  *are* on Redis, which is what makes it look configured.
-- `MAIL_ENCRYPTION` → `MAIL_SCHEME`. Harmless only by luck — `MailManager`
-  falls back to `smtps` whenever the port is 465, which is the port in use.
+## Laravel 11 renamed two keys, and kept no alias
+
+Both are now correct in `.env`, but the old names are still what a search
+turns up, so they are worth knowing:
+
+- `CACHE_DRIVER` → `CACHE_STORE`. This one bit: `.env` set `redis` under the
+  old name while `config('cache.default')` answered `database`, and queue and
+  session being on Redis is what made it look configured. Fixed — cache,
+  queue and session are all Redis now.
+- `MAIL_ENCRYPTION` → `MAIL_SCHEME`. Moot since mail moved to Resend.
 
 When a `.env` value seems not to take effect, check the key still exists in
 `config/` before looking anywhere else. `.env.example` carries the correct
