@@ -146,6 +146,8 @@ class PlanSeeder extends Seeder
                 'features' => [
                     Feature::InstagramEnabled->value => true,
                     Feature::InstagramPostMonthlyLimit->value => 4,
+                    Feature::LocationLimit->value => 1,
+                    Feature::BrandLimit->value => 1,
                 ],
             ],
             [
@@ -160,6 +162,8 @@ class PlanSeeder extends Seeder
                 'features' => [
                     Feature::InstagramEnabled->value => true,
                     Feature::InstagramPostMonthlyLimit->value => 12,
+                    Feature::LocationLimit->value => 1,
+                    Feature::BrandLimit->value => 1,
                 ],
             ],
             [
@@ -174,6 +178,8 @@ class PlanSeeder extends Seeder
                 'features' => [
                     Feature::InstagramEnabled->value => true,
                     Feature::InstagramPostMonthlyLimit->value => 30,
+                    Feature::LocationLimit->value => 1,
+                    Feature::BrandLimit->value => 1,
                     Feature::InstagramAutoPublishEnabled->value => true,
                 ],
             ],
@@ -183,7 +189,7 @@ class PlanSeeder extends Seeder
     /**
      * The MEO feature values for one tier.
      *
-     * @return array<string, int|bool>
+     * @return array<string, int|bool|null>
      */
     protected function meoFeatures(string $tier): array
     {
@@ -198,7 +204,7 @@ class PlanSeeder extends Seeder
      * The MEO entitlement matrix, laid out as in the design document: one row
      * per feature, one column per tier (FREE, LIGHT, STANDARD, PREMIUM).
      *
-     * @return array<string, array<int, int|bool>>
+     * @return array<string, array<int, int|bool|null>>
      */
     protected function meoFeatureMatrix(): array
     {
@@ -225,6 +231,11 @@ class PlanSeeder extends Seeder
             Feature::AiImprovementProposalsEnabled->value => [false, false, true, true],
             Feature::PdfReportEnabled->value => [false, true, true, true],
             Feature::MultiLocationEnabled->value => [false, false, false, true],
+            // null is unlimited. The single-shop tiers are held to one store
+            // front by MultiLocationEnabled already; these say the same thing
+            // as a number, and give PREMIUM a ceiling only if one is ever set.
+            Feature::LocationLimit->value => [1, 1, 1, null],
+            Feature::BrandLimit->value => [1, 1, 3, null],
         ];
     }
 }

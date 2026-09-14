@@ -51,6 +51,14 @@ enum Feature: string
     case PdfReportEnabled = 'pdf_report.enabled';
     case MultiLocationEnabled = 'multi_location.enabled';
 
+    // ブランド・店舗の保有数
+    //
+    // Counted from the rows that exist right now, not consumed over a period:
+    // deleting a store front gives the slot back the same second. That is why
+    // neither appears in isMetered() below.
+    case BrandLimit = 'brand.limit';
+    case LocationLimit = 'location.limit';
+
     /**
      * The type a feature's value is stored and read as.
      */

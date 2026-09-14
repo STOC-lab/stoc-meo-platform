@@ -207,15 +207,22 @@ class LocationCrudTest extends TestCase
             ->assertJsonPath('locations.0.name', '渋谷店');
     }
 
-    public function test_an_org_admin_deletes_a_store_front(): void
+    public function test_an_org_admin_deletes_a_store_front_and_its_history_survives(): void
     {
+        // Soft, deliberately: ten tables of measurements hang off a store
+        // front, and taking it out of the product should not take them too.
         $location = $this->location();
 
         $this->actingAs($this->member('org_admin'))
             ->deleteJson($this->url("/{$location->id}"))
             ->assertNoContent();
 
-        $this->assertDatabaseMissing('locations', ['id' => $location->id]);
+        $this->assertSoftDeleted('locations', ['id' => $location->id]);
+
+        $this->actingAs($this->member('org_admin'))
+            ->getJson($this->url())
+            ->assertOk()
+            ->assertJsonCount(0, 'locations');
     }
 
     public function test_a_location_admin_cannot_delete_a_store_front(): void

@@ -41,6 +41,12 @@ class StoreLocationRequest extends FormRequest
             // grid around. Optional: rank tracking does not need it.
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'postal_code' => ['nullable', 'string', 'regex:/^[0-9]{3}-?[0-9]{4}$/'],
+            'prefecture' => ['nullable', 'string', 'max:32'],
+            'city' => ['nullable', 'string', 'max:64'],
+            'google_place_id' => ['nullable', 'string', 'max:255'],
+            'google_maps_url' => ['nullable', 'url', 'max:512'],
+            'is_active' => ['boolean'],
         ];
     }
 
@@ -52,6 +58,7 @@ class StoreLocationRequest extends FormRequest
         return [
             'brand_id.exists' => '指定されたブランドが見つかりません。',
             'gbp_location_id.unique' => 'このGoogleビジネスプロフィールは既に別の店舗に紐付いています。',
+            'postal_code.regex' => '郵便番号は 1234567 または 123-4567 の形式で入力してください。',
         ];
     }
 }

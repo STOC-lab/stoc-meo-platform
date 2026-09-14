@@ -146,8 +146,10 @@ class BrandCrudTest extends TestCase
             ->assertOk();
     }
 
-    public function test_an_org_admin_deletes_a_brand_and_its_locations_survive(): void
+    public function test_a_brand_with_store_fronts_under_it_cannot_be_deleted(): void
     {
+        // Moving a chain's shops out from under their banner is a decision
+        // taken per shop, not a side effect of tidying the brand list.
         $brand = Brand::factory()->create(['organization_id' => $this->organization->id]);
         $location = Location::factory()->create([
             'organization_id' => $this->organization->id,
@@ -156,10 +158,38 @@ class BrandCrudTest extends TestCase
 
         $this->actingAs($this->member('org_admin'))
             ->deleteJson($this->url("/{$brand->id}"))
+            ->assertUnprocessable();
+
+        $this->assertDatabaseHas('brands', ['id' => $brand->id, 'deleted_at' => null]);
+        $this->assertDatabaseHas('locations', ['id' => $location->id, 'brand_id' => $brand->id]);
+    }
+
+    public function test_an_org_admin_deletes_an_empty_brand_and_it_is_only_soft_deleted(): void
+    {
+        $brand = Brand::factory()->create(['organization_id' => $this->organization->id]);
+
+        $this->actingAs($this->member('org_admin'))
+            ->deleteJson($this->url("/{$brand->id}"))
             ->assertNoContent();
 
-        $this->assertDatabaseMissing('brands', ['id' => $brand->id]);
-        $this->assertDatabaseHas('locations', ['id' => $location->id, 'brand_id' => null]);
+        $this->assertSoftDeleted('brands', ['id' => $brand->id]);
+    }
+
+    public function test_a_brand_freed_of_its_store_fronts_can_then_be_deleted(): void
+    {
+        $brand = Brand::factory()->create(['organization_id' => $this->organization->id]);
+        $location = Location::factory()->create([
+            'organization_id' => $this->organization->id,
+            'brand_id' => $brand->id,
+        ]);
+
+        $location->update(['brand_id' => null]);
+
+        $this->actingAs($this->member('org_admin'))
+            ->deleteJson($this->url("/{$brand->id}"))
+            ->assertNoContent();
+
+        $this->assertSoftDeleted('brands', ['id' => $brand->id]);
     }
 
     public function test_a_location_admin_cannot_delete_a_brand(): void

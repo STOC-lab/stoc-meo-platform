@@ -51,6 +51,12 @@ class UpdateLocationRequest extends FormRequest
             'address' => ['sometimes', 'nullable', 'string', 'max:255'],
             'latitude' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
+            'postal_code' => ['sometimes', 'nullable', 'string', 'regex:/^[0-9]{3}-?[0-9]{4}$/'],
+            'prefecture' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'city' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'google_place_id' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'google_maps_url' => ['sometimes', 'nullable', 'url', 'max:512'],
+            'is_active' => ['sometimes', 'boolean'],
         ];
     }
 
@@ -62,6 +68,7 @@ class UpdateLocationRequest extends FormRequest
         return [
             'brand_id.exists' => '指定されたブランドが見つかりません。',
             'gbp_location_id.unique' => 'このGoogleビジネスプロフィールは既に別の店舗に紐付いています。',
+            'postal_code.regex' => '郵便番号は 1234567 または 123-4567 の形式で入力してください。',
         ];
     }
 }

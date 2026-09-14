@@ -31,6 +31,9 @@ class StoreBrandRequest extends FormRequest
                 Rule::unique('brands', 'name')
                     ->where('organization_id', app(Tenancy::class)->id()),
             ],
+            'logo_url' => ['nullable', 'url', 'max:512'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'website_url' => ['nullable', 'url', 'max:255'],
         ];
     }
 

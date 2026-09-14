@@ -39,6 +39,9 @@ class UpdateBrandRequest extends FormRequest
                     ->where('organization_id', app(Tenancy::class)->id())
                     ->ignore($brand instanceof Brand ? $brand->getKey() : $brand),
             ],
+            'logo_url' => ['sometimes', 'nullable', 'url', 'max:512'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'website_url' => ['sometimes', 'nullable', 'url', 'max:255'],
         ];
     }
 

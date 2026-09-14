@@ -3,16 +3,26 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Models\Concerns\HasTenantSlug;
 use App\Services\Ranking\GeoPoint;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * A single store front, mapped to its Google Business Profile location.
+ *
+ * `address` holds the whole address on one line and is what the Business
+ * Profile sync writes. The broken-out parts beside it are what a person types,
+ * and neither is derived from the other.
+ *
+ * Deletion is soft: ten tables of history hang off a store front, and taking
+ * it out of the product should not take the measurements with it.
  */
 #[Fillable([
     'organization_id',
@@ -21,13 +31,34 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'gbp_location_id',
     'website_url',
     'phone',
+    'postal_code',
+    'prefecture',
+    'city',
     'address',
     'latitude',
     'longitude',
+    'google_place_id',
+    'google_maps_url',
+    'is_active',
 ])]
 class Location extends Model
 {
-    use BelongsToTenant, HasFactory;
+    use BelongsToTenant, HasFactory, HasTenantSlug, SoftDeletes;
+
+    /**
+     * The column default lives in the database, but a model that has just been
+     * created has to answer for itself before it is read back.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'is_active' => true,
+    ];
+
+    protected function slugFallback(): string
+    {
+        return 'store';
+    }
 
     /**
      * @return array<string, string>
@@ -37,7 +68,19 @@ class Location extends Model
         return [
             'latitude' => 'float',
             'longitude' => 'float',
+            'is_active' => 'boolean',
         ];
+    }
+
+    /**
+     * Only the store fronts that are being run right now. A paused one keeps
+     * its history and its keywords; it is simply not measured or shown.
+     *
+     * @param  Builder<Location>  $query
+     */
+    public function scopeActive(Builder $query): void
+    {
+        $query->where('is_active', true);
     }
 
     /**

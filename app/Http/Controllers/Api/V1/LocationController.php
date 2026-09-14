@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\Feature;
 use App\Exceptions\FeatureNotAvailableException;
+use App\Exceptions\QuotaExceededException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreLocationRequest;
 use App\Http\Requests\UpdateLocationRequest;
@@ -23,10 +24,18 @@ use Illuminate\Http\Response;
  */
 class LocationController extends Controller
 {
+    /**
+     * Store fronts per page. `locations` stays a flat array under its own key
+     * with the paging beside it, because the location switcher in the shell
+     * reads that list on every screen and a changed envelope would empty it.
+     */
+    public const PER_PAGE = 15;
+
     public function __construct(protected FeatureResolver $features) {}
 
     /**
-     * List the store fronts, optionally narrowed to one brand.
+     * List the store fronts, optionally narrowed to one brand or to the ones
+     * being run right now.
      */
     public function index(Request $request, Organization $organization): JsonResponse
     {
@@ -38,11 +47,24 @@ class LocationController extends Controller
                 $request->filled('brand_id'),
                 fn ($query) => $query->where('brand_id', $request->integer('brand_id')),
             )
+            ->when(
+                $request->filled('is_active'),
+                fn ($query) => $query->where('is_active', $request->boolean('is_active')),
+            )
             ->orderBy('name')
-            ->get();
+            ->paginate(self::PER_PAGE);
 
         return response()->json([
-            'locations' => $locations->map(fn (Location $location) => $this->present($location))->all(),
+            'locations' => collect($locations->items())
+                ->map(fn (Location $location) => $this->present($location))
+                ->all(),
+            'meta' => [
+                'current_page' => $locations->currentPage(),
+                'last_page' => $locations->lastPage(),
+                'per_page' => $locations->perPage(),
+                'total' => $locations->total(),
+            ],
+            'allowance' => $this->allowance($organization),
         ]);
     }
 
@@ -57,6 +79,7 @@ class LocationController extends Controller
     {
         $this->authorize('create', Location::class);
         $this->guardMultiLocationAllowance($organization);
+        $this->guardLocationAllowance($organization);
 
         $location = Location::create($request->validated());
 
@@ -100,6 +123,56 @@ class LocationController extends Controller
     }
 
     /**
+     * The numeric ceiling on store fronts, counted from the rows that exist
+     * now rather than from a monthly counter: deleting one gives the slot back
+     * the same second.
+     *
+     * This sits behind the entitlement above rather than replacing it. The
+     * flag is what says "this plan runs one shop" and carries the better
+     * upgrade prompt; this is what says "and this one runs at most eight".
+     *
+     * @throws QuotaExceededException
+     */
+    protected function guardLocationAllowance(Organization $organization): void
+    {
+        // A plan that does not mention the limit at all predates it; that is
+        // not the same as a plan that sets it to zero, and FeatureResolver
+        // answers 0 for both. Inventing a ceiling for the first kind would
+        // lock every organization on an older plan out of its own product.
+        if (! $this->features->has(Feature::LocationLimit, $organization)) {
+            return;
+        }
+
+        $used = $organization->locations()->count();
+        $limit = $this->features->limit(Feature::LocationLimit, $organization);
+
+        if ($limit === null) {
+            return;
+        }
+
+        if ($used >= $limit) {
+            throw QuotaExceededException::for(Feature::LocationLimit, $limit, $used);
+        }
+    }
+
+    /**
+     * @return array<string, int|null>
+     */
+    protected function allowance(Organization $organization): array
+    {
+        $limit = $this->features->has(Feature::LocationLimit, $organization)
+            ? $this->features->limit(Feature::LocationLimit, $organization)
+            : null;
+        $used = $organization->locations()->count();
+
+        return [
+            'limit' => $limit,
+            'used' => $used,
+            'remaining' => $limit === null ? null : max(0, $limit - $used),
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function present(Location $location): array
@@ -110,15 +183,23 @@ class LocationController extends Controller
             'brand' => $location->brand === null ? null : [
                 'id' => $location->brand->id,
                 'name' => $location->brand->name,
+                'slug' => $location->brand->slug,
             ],
+            'slug' => $location->slug,
             'gbp_location_id' => $location->gbp_location_id,
             'linked_to_gbp' => $location->isLinkedToGbp(),
             'website_url' => $location->website_url,
             'phone' => $location->phone,
+            'postal_code' => $location->postal_code,
+            'prefecture' => $location->prefecture,
+            'city' => $location->city,
             'address' => $location->address,
             'latitude' => $location->latitude,
             'longitude' => $location->longitude,
             'has_coordinates' => $location->hasCoordinates(),
+            'google_place_id' => $location->google_place_id,
+            'google_maps_url' => $location->google_maps_url,
+            'is_active' => $location->is_active,
             'created_at' => $location->created_at?->toIso8601String(),
             'updated_at' => $location->updated_at?->toIso8601String(),
         ];

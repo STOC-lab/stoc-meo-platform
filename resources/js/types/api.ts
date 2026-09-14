@@ -39,23 +39,46 @@ export interface Brand {
     id: number;
     name: string;
     slug: string | null;
+    logo_url: string | null;
+    description: string | null;
+    website_url: string | null;
+    locations_count: number;
     created_at: string | null;
+    updated_at: string | null;
 }
 
 export interface Location {
     id: number;
     name: string;
-    brand: { id: number; name: string } | null;
+    slug: string | null;
+    brand: { id: number; name: string; slug: string | null } | null;
     gbp_location_id: string | null;
     linked_to_gbp: boolean;
     website_url: string | null;
     phone: string | null;
+    /** The address as one line, which is also what the GBP sync writes. */
     address: string | null;
+    /** The same address broken up, as a person types it. Neither is derived
+     *  from the other. */
+    postal_code: string | null;
+    prefecture: string | null;
+    city: string | null;
     latitude: number | null;
     longitude: number | null;
     has_coordinates: boolean;
+    google_place_id: string | null;
+    google_maps_url: string | null;
+    is_active: boolean;
     created_at: string | null;
     updated_at: string | null;
+}
+
+/** The paging every list endpoint carries beside its rows. */
+export interface PageMeta {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
 }
 
 export interface RankingResultSummary {
