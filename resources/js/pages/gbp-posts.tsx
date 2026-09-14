@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Check, Plus, Sparkles } from 'lucide-react';
 
+import { GbpConnectionNotice, useGbpReadiness } from '@/components/common/gbp-connection-notice';
 import { EmptyState, ErrorState, LoadingState, PageHeader } from '@/components/common/states';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -76,7 +77,8 @@ export default function GbpPosts() {
                     <TabsTrigger value="campaigns">キャンペーン</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="posts">
+                <TabsContent value="posts" className="flex flex-col gap-4">
+                    <GbpConnectionNotice locationId={locationId} />
                     <GbpPostsPanel locationId={locationId} />
                 </TabsContent>
 
@@ -91,12 +93,18 @@ export default function GbpPosts() {
 function GbpPostsPanel({ locationId }: { locationId: number | null }) {
     const posts = useGbpPosts(locationId);
     const createPost = useCreateGbpPost(locationId);
+    const gbp = useGbpReadiness(locationId);
 
     const [open, setOpen] = useState(false);
     const [content, setContent] = useState('');
     const [mediaUrl, setMediaUrl] = useState('');
 
     const allowance = posts.data?.allowance;
+
+    // Without a usable connection the post is written, queued and then fails
+    // at Google, which costs the shop owner the writing and tells them nothing
+    // until they look at the list again. The notice above says why.
+    const cannotPublish = gbp.state === 'missing' || gbp.state === 'reconnect';
 
     async function submit(event: React.FormEvent) {
         event.preventDefault();
@@ -126,7 +134,7 @@ function GbpPostsPanel({ locationId }: { locationId: number | null }) {
                                 : 'Googleビジネスプロフィールの最新情報'}
                         </CardDescription>
                     </div>
-                    <Button size="sm" onClick={() => setOpen(true)}>
+                    <Button size="sm" onClick={() => setOpen(true)} disabled={cannotPublish}>
                         <Plus aria-hidden="true" />
                         新規投稿
                     </Button>

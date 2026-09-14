@@ -308,6 +308,35 @@ class GoogleConnectionTest extends TestCase
             ->assertJsonPath('connection.needs_reconnection', true);
     }
 
+    public function test_a_connection_that_has_never_synced_says_so(): void
+    {
+        // The screens tell "not connected" from "connected but nothing has
+        // arrived" by this field, and the two need different words: telling a
+        // shop owner to connect a profile they connected last week reads as
+        // the application being broken.
+        GbpAccount::factory()->forLocation($this->location)->create(['last_synced_at' => null]);
+
+        $this->actingAs($this->member('org_admin'))
+            ->getJson('/api/v1/auth/google/connection?location_id='.$this->location->id)
+            ->assertOk()
+            ->assertJsonPath('connection.token_status', 'active')
+            ->assertJsonPath('connection.needs_reconnection', false)
+            ->assertJsonPath('connection.last_synced_at', null);
+    }
+
+    public function test_a_connection_that_has_synced_reports_when(): void
+    {
+        GbpAccount::factory()->forLocation($this->location)->create([
+            'last_synced_at' => '2026-09-13 03:05:00',
+        ]);
+
+        $response = $this->actingAs($this->member('org_admin'))
+            ->getJson('/api/v1/auth/google/connection?location_id='.$this->location->id)
+            ->assertOk();
+
+        $this->assertNotNull($response->json('connection.last_synced_at'));
+    }
+
     public function test_an_unconnected_store_front_reads_back_as_nothing(): void
     {
         $this->actingAs($this->member('org_admin'))

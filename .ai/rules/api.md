@@ -40,3 +40,25 @@ API is location-scoped. Do not assume `/locations/{id}/rankings` exists.
 React Query hooks in `resources/js/hooks` own the fetching, and mutations
 invalidate their list key on success. Add a hook rather than calling `api`
 directly from a page.
+
+## An empty screen has to say which kind of empty it is
+
+"Connect your Google Business Profile" shown to someone who connected it last
+week reads as the application being broken, and they wait for content that is
+never coming. `/reviews` said exactly that for four days while the nightly
+sweep failed at Google's end.
+
+`useGbpReadiness` in `components/common/gbp-connection-notice.tsx` reads
+`/auth/google/connection` and separates the four cases the shop owner needs
+different words for: no connection, a connection needing reconnection, a
+connection that is healthy but whose `last_synced_at` is still null, and one
+that is working. A Business Profile screen shows `GbpConnectionNotice` above
+its content and leaves its own empty state to speak only for the last case.
+
+`last_synced_at` is what tells "never arrived" from "nothing to show", so it is
+load-bearing on that endpoint rather than decoration; `GoogleConnectionTest`
+holds it.
+
+Where an action would be queued and then fail for the same reason — posting to
+Business Profile without a usable connection — disable it rather than letting
+the person write the post first.

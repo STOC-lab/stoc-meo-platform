@@ -297,12 +297,19 @@ function RankTrendCard({
 
     const loading = histories.some((query) => query.isPending);
 
-    const series = keywords
-        .map((keyword, index) => ({
-            keyword: keyword.keyword,
-            points: histories[index]?.data ?? [],
-        }))
-        .filter((entry) => entry.points.length > 0);
+    const measured = keywords.map((keyword, index) => ({
+        keyword: keyword.keyword,
+        points: histories[index]?.data ?? [],
+    }));
+
+    // A keyword that was out of the results on every check has points but no
+    // rank to draw. Left in, it takes a colour and a legend entry and draws
+    // nothing, which reads as a broken chart; it is named underneath instead.
+    const series = measured.filter((entry) => entry.points.some((point) => point.rank !== null));
+
+    const unranked = measured
+        .filter((entry) => entry.points.length > 0 && entry.points.every((point) => point.rank === null))
+        .map((entry) => entry.keyword);
 
     return (
         <Card>
@@ -329,10 +336,19 @@ function RankTrendCard({
                     <LoadingState />
                 ) : series.length === 0 ? (
                     <p className="py-12 text-center text-sm text-muted-foreground">
-                        この期間の計測結果がまだありません。毎日 2:00 に自動計測されます。
+                        {unranked.length > 0
+                            ? `計測中のキーワードはこの期間すべて圏外でした（${unranked.join('、')}）。`
+                            : 'この期間の計測結果がまだありません。毎日 2:00 に自動計測されます。'}
                     </p>
                 ) : (
-                    <RankHistoryChart series={series} />
+                    <>
+                        <RankHistoryChart series={series} />
+                        {unranked.length > 0 ? (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                                この期間ずっと圏外だったため線を引いていないキーワード: {unranked.join('、')}
+                            </p>
+                        ) : null}
+                    </>
                 )}
             </CardContent>
         </Card>

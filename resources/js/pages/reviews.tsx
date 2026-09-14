@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Check, Send, Sparkles, Star } from 'lucide-react';
 
+import { GbpConnectionNotice, useGbpReadiness } from '@/components/common/gbp-connection-notice';
 import { EmptyState, ErrorState, LoadingState, PageHeader } from '@/components/common/states';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -21,6 +22,7 @@ export default function Reviews() {
     const locationId = location?.id ?? null;
 
     const reviews = useReviews(locationId);
+    const gbp = useGbpReadiness(locationId);
     const [filter, setFilter] = useState<Filter>('all');
 
     if (locationsPending) {
@@ -76,6 +78,8 @@ export default function Reviews() {
                 }
             />
 
+            <GbpConnectionNotice locationId={locationId} />
+
             {reviews.isPending ? (
                 <LoadingState />
             ) : reviews.isError ? (
@@ -84,9 +88,14 @@ export default function Reviews() {
                 <EmptyState
                     title={all.length === 0 ? '口コミがありません' : '該当する口コミがありません'}
                     description={
-                        all.length === 0
-                            ? 'Googleビジネスプロフィールを連携すると、毎日 3:00 に自動で取り込まれます。'
-                            : 'フィルターを変更してください。'
+                        all.length > 0
+                            ? 'フィルターを変更してください。'
+                            : // The notice above already says why when the
+                              // connection is the reason, so this only speaks
+                              // for the case where the sync is working.
+                              gbp.state === 'ready'
+                              ? 'このお店にはまだGoogleの口コミが投稿されていません。毎日 3:00 に取り込まれます。'
+                              : undefined
                     }
                 />
             ) : (
