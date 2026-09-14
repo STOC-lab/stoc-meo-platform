@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from 'react';
 import { AlertCircle, CheckCircle2, X } from 'lucide-react';
 
+import { handleEntitlementRefusal } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 /**
@@ -41,6 +42,19 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const value = useMemo(() => ({ toast }), [toast]);
+
+    // A plan refusal can arrive from anywhere — a background refetch, a
+    // mutation whose screen has moved on — so it is said here rather than
+    // left to whichever call happened to make it. The screen itself is not
+    // touched: what is already drawn stays drawn, and the action that was
+    // refused simply did not happen.
+    useEffect(() => {
+        handleEntitlementRefusal((refusal) => {
+            const headline = refusal.upgrade?.headline;
+
+            toast(headline ? `${refusal.message} ${headline}` : refusal.message, 'error');
+        });
+    }, [toast]);
 
     return (
         <ToastContext.Provider value={value}>

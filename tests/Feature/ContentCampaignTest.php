@@ -6,6 +6,7 @@ use App\Enums\CampaignChannel;
 use App\Enums\CampaignPostStatus;
 use App\Enums\CampaignStatus;
 use App\Enums\CampaignType;
+use App\Enums\Feature;
 use App\Jobs\GenerateCampaignContentJob;
 use App\Jobs\InstagramPublishJob;
 use App\Jobs\PublishCampaignPostJob;
@@ -46,8 +47,15 @@ class ContentCampaignTest extends TestCase
             'ai.claude.models' => ['fast' => 'claude-haiku-4-5', 'strong' => 'claude-sonnet-4-6'],
         ]);
 
+        // A plan carrying both channels these tests publish to. The campaign
+        // mechanics are what is under test here; which channels a plan may
+        // name is EntitlementTest's business.
         $this->organization = Organization::factory()
-            ->onPlan(Plan::factory()->withFeatures([])->create())
+            ->onPlan(Plan::factory()->withFeatures([
+                Feature::GbpPostMonthlyLimit->value => 12,
+                Feature::InstagramEnabled->value => true,
+                Feature::InstagramPostMonthlyLimit->value => 12,
+            ])->create())
             ->create();
 
         $this->location = Location::factory()->create([

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Enums\CampaignChannel;
 use App\Enums\CampaignPostStatus;
 use App\Enums\CampaignStatus;
+use App\Exceptions\FeatureNotAvailableException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreContentCampaignRequest;
 use App\Http\Requests\UpdateContentCampaignRequest;
@@ -14,6 +15,7 @@ use App\Jobs\PublishCampaignPostJob;
 use App\Models\ContentCampaign;
 use App\Models\ContentCampaignPost;
 use App\Models\Location;
+use App\Services\FeatureResolver;
 use App\Support\Tenancy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -28,7 +30,10 @@ use Illuminate\Http\Response;
  */
 class ContentCampaignController extends Controller
 {
-    public function __construct(protected Tenancy $tenancy) {}
+    public function __construct(
+        protected Tenancy $tenancy,
+        protected FeatureResolver $features,
+    ) {}
 
     public function index(Location $location): JsonResponse
     {
@@ -64,13 +69,17 @@ class ContentCampaignController extends Controller
         $channels = $validated['channels'];
         unset($validated['channels']);
 
+        // Checked before anything is written: a campaign refused for one of
+        // its channels should leave nothing behind to tidy up.
+        $channels = $this->entitledChannels($channels);
+
         $campaign = $location->campaigns()->create([
             ...$validated,
             'status' => CampaignStatus::Draft,
             'created_by_user_id' => $request->user()->getKey(),
         ]);
 
-        $campaign->addChannels(array_map(fn (string $channel) => CampaignChannel::from($channel), $channels));
+        $campaign->addChannels($channels);
 
         return response()->json([
             'campaign' => $this->present($campaign->load('posts')),
@@ -86,10 +95,14 @@ class ContentCampaignController extends Controller
         $channels = $validated['channels'] ?? null;
         unset($validated['channels']);
 
+        // Same order as creating one: the refusal lands before the edit, so a
+        // rejected channel does not half-apply the rest of the change.
+        $channels = $channels === null ? null : $this->entitledChannels($channels);
+
         $campaign->update($validated);
 
         if ($channels !== null) {
-            $campaign->addChannels(array_map(fn (string $channel) => CampaignChannel::from($channel), $channels));
+            $campaign->addChannels($channels);
         }
 
         return response()->json([
@@ -178,6 +191,11 @@ class ContentCampaignController extends Controller
             'approved_at' => now(),
         ])->save();
 
+        // Checked again here, not only when the campaign was drawn up: a plan
+        // can be downgraded between writing a post and approving it, and this
+        // is the step that actually speaks to the outside world.
+        $this->guardChannel($post->channel);
+
         // Each channel has its own job, so one failing leaves the rest alone.
         match ($post->channel) {
             CampaignChannel::Instagram => InstagramPublishJob::dispatch($post),
@@ -187,6 +205,43 @@ class ContentCampaignController extends Controller
         return response()->json([
             'post' => $this->presentPost($post),
         ], 202);
+    }
+
+    /**
+     * The requested channels, refused as a whole if the plan does not carry
+     * one of them.
+     *
+     * Campaigns are the one place where what a plan includes depends on the
+     * request body rather than the route, so the check cannot live in the
+     * `feature` middleware: a campaign asking for Business Profile alone is
+     * fine on a plan that has no Instagram.
+     *
+     * @param  array<int, string>  $channels
+     * @return array<int, CampaignChannel>
+     *
+     * @throws FeatureNotAvailableException
+     */
+    protected function entitledChannels(array $channels): array
+    {
+        return array_map(function (string $channel) {
+            $channel = CampaignChannel::from($channel);
+
+            $this->guardChannel($channel);
+
+            return $channel;
+        }, $channels);
+    }
+
+    /**
+     * @throws FeatureNotAvailableException
+     */
+    protected function guardChannel(CampaignChannel $channel): void
+    {
+        $feature = $channel->feature();
+
+        if (! $this->features->allows($feature)) {
+            throw new FeatureNotAvailableException($feature);
+        }
     }
 
     /**

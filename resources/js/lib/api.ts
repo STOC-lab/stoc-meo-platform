@@ -45,6 +45,62 @@ export function handleUnauthenticated(handler: () => void): void {
     onUnauthenticated = handler;
 }
 
+/**
+ * What the API says when a plan does not stretch to something.
+ *
+ * `feature` is always there; `limit` and `used` only when the allowance was
+ * spent rather than absent, and `upgrade` is the call to action the API picks.
+ */
+export interface EntitlementRefusal {
+    message: string;
+    feature: string;
+    limit?: number | null;
+    used?: number;
+    remaining?: number | null;
+    upgrade?: {
+        required: boolean;
+        headline: string;
+        cta_label: string;
+        cta_url: string;
+        current_plan: { code: string; name: string } | null;
+        recommended_plan: { code: string; name: string } | null;
+    } | null;
+}
+
+/**
+ * A 403 carrying a `feature` is the plan talking, not the permissions: the
+ * request was understood and refused because of what the organization pays
+ * for. Those are worth saying out loud wherever they happen, since the caller
+ * often has nowhere to put the message — a background refetch, a mutation
+ * whose screen has already moved on.
+ *
+ * A 403 without a `feature` is an ordinary authorization refusal and is left
+ * to the caller.
+ */
+export function entitlementRefusal(error: unknown): EntitlementRefusal | null {
+    if (!axios.isAxiosError(error) || error.response?.status !== 403) {
+        return null;
+    }
+
+    const data = error.response.data as Partial<EntitlementRefusal> | undefined;
+
+    if (typeof data?.feature !== 'string' || typeof data.message !== 'string') {
+        return null;
+    }
+
+    return data as EntitlementRefusal;
+}
+
+let onEntitlementRefused: ((refusal: EntitlementRefusal) => void) | null = null;
+
+/**
+ * Registered by the toast provider. Nothing is swallowed: the rejection still
+ * reaches the caller, which decides what the screen does about it.
+ */
+export function handleEntitlementRefusal(handler: (refusal: EntitlementRefusal) => void): void {
+    onEntitlementRefused = handler;
+}
+
 api.interceptors.response.use(
     (response) => response,
     (error: AxiosError) => {
@@ -52,6 +108,12 @@ api.interceptors.response.use(
         // way as a plain 401: by signing in again.
         if (error.response?.status === 401 || error.response?.status === 419) {
             onUnauthenticated?.();
+        }
+
+        const refusal = entitlementRefusal(error);
+
+        if (refusal !== null) {
+            onEntitlementRefused?.(refusal);
         }
 
         return Promise.reject(error);

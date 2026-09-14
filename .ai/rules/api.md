@@ -94,3 +94,45 @@ not pay for two seats.
 dismissed; a success one clears itself, because it confirms something the
 reader just did. Outside the provider `useToast()` is a no-op rather than a
 crash.
+
+## Entitlements are two middleware, and they already exist
+
+`feature:<key>` (`EnsureFeatureIsEnabled`) refuses a route the plan does not
+include; `quota:<key>[,amount]` (`EnforceUsageQuota`) refuses one whose monthly
+allowance is spent. Aliases are registered in `bootstrap/app.php`. Do not add a
+third middleware for this — check what is applied first.
+
+`FeatureResolver` answers `allows()`, not `can()`. A limit counts as granted
+while it is unlimited or greater than zero, so a plan holding
+`gbp.post.monthly_limit => 0` is refused by `feature:` without needing a
+separate flag.
+
+Both refusals answer **403** with one envelope, never 422: `message`,
+`feature`, `upgrade`, plus `limit`/`used`/`remaining` when an allowance was
+spent. 422 is validation. The SPA tells a plan refusal from an ordinary
+authorization one by whether `feature` is present, so it has to stay.
+
+### Where the check cannot be a route gate
+
+Three kinds do not belong in middleware, and each is in a controller with a
+comment saying why:
+
+- **Heatmaps** — the two grid sizes are entitled separately, so it depends on
+  the size asked for (`HeatmapController`).
+- **Campaign channels** — a campaign naming only Business Profile is fine on a
+  plan with no Instagram, so it depends on the request body
+  (`ContentCampaignController::entitledChannels()`, and again on approve,
+  since a plan can be downgraded in between). `CampaignChannel::feature()`
+  holds the mapping; `wordpress` maps to `blog.enabled`, which no plan grants.
+- **Structural counts** — `brand.limit`, `location.limit`, `member.limit` are
+  counted from live rows, not metered. See `models.md`.
+
+Guard before you write. A campaign refused for one of its channels must leave
+no half-made row behind.
+
+### The SPA says plan refusals out loud
+
+`lib/api.ts` turns any 403 carrying a `feature` into a toast through the
+provider, wherever it came from — a background refetch, a mutation whose screen
+has moved on. The rejection still reaches the caller; nothing is swallowed, and
+the page is not blanked or greyed out. A 403 without a `feature` is left alone.
