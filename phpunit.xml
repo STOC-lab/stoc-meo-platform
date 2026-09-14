@@ -47,6 +47,17 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
+        <!--
+            Stripe, pinned for the same reason and with more at stake. The
+            Stripe SDK calls Guzzle directly rather than Laravel's HTTP client,
+            so Http::fake() does not intercept it: a test that reaches Stripe
+            without meaning to would reach whichever account .env names. Once
+            the deployment is on live keys that is a real charge against a real
+            customer. These values are deliberately not credentials.
+        -->
+        <env name="STRIPE_KEY" value="pk_test_suite" force="true"/>
+        <env name="STRIPE_SECRET" value="sk_test_suite" force="true"/>
+        <env name="STRIPE_WEBHOOK_SECRET" value="whsec_suite" force="true"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

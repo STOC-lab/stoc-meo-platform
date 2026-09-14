@@ -4,7 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Organization;
 use App\Models\Plan;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Laravel\Cashier\Http\Controllers\WebhookController as CashierWebhookController;
 
 /**
@@ -13,9 +16,38 @@ use Laravel\Cashier\Http\Controllers\WebhookController as CashierWebhookControll
  * Cashier's own handlers keep the subscriptions table in step; this controller
  * adds the organization-level bookkeeping the design document asks for —
  * status, plan_id and the denormalised stripe_subscription_id.
+ *
+ * Every delivery that gets past the signature check is written to the log.
+ * A webhook that is not arriving and a webhook that is arriving and doing
+ * nothing look identical from the outside, and the difference is the whole
+ * question on the evening the live endpoint is first pointed here — Stripe's
+ * own dashboard shows the delivery, not what this side made of it.
  */
 class StripeWebhookController extends CashierWebhookController
 {
+    /**
+     * Note the delivery, then let Cashier dispatch it.
+     *
+     * The signature has already been checked by the middleware, so anything
+     * reaching here is genuine: an event with no handler is recorded as
+     * ignored rather than passing in silence.
+     */
+    public function handleWebhook(Request $request)
+    {
+        $payload = json_decode($request->getContent(), true);
+        $type = $payload['type'] ?? 'unknown';
+        $method = 'handle'.Str::studly(str_replace('.', '_', $type));
+
+        Log::info('Stripe webhook received.', [
+            'type' => $type,
+            'id' => $payload['id'] ?? null,
+            'livemode' => $payload['livemode'] ?? null,
+            'handled' => method_exists($this, $method),
+        ]);
+
+        return parent::handleWebhook($request);
+    }
+
     /**
      * A finished Checkout session: attach the customer to the organization and
      * activate the plan it paid for.

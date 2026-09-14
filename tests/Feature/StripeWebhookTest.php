@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Organization;
 use App\Models\Plan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Laravel\Cashier\Subscription;
 use Tests\TestCase;
 
@@ -63,6 +64,44 @@ class StripeWebhookTest extends TestCase
                 ]],
             ],
         ], $overrides);
+    }
+
+    public function test_every_verified_delivery_is_written_to_the_log(): void
+    {
+        // The evening the live endpoint is first pointed here, "is it
+        // arriving?" and "is it arriving and doing nothing?" look identical
+        // from outside. This log line is the only thing that tells them apart.
+        Log::spy();
+
+        $this->postJson('/stripe/webhook', [
+            'id' => 'evt_test_1',
+            'type' => 'customer.subscription.updated',
+            'livemode' => false,
+            'data' => ['object' => ['id' => 'sub_missing', 'customer' => 'cus_missing']],
+        ]);
+
+        Log::shouldHaveReceived('info')->withArgs(function (string $message, array $context) {
+            return $message === 'Stripe webhook received.'
+                && $context['type'] === 'customer.subscription.updated'
+                && $context['id'] === 'evt_test_1'
+                && $context['handled'] === true;
+        })->once();
+    }
+
+    public function test_an_event_nothing_handles_is_recorded_as_ignored(): void
+    {
+        Log::spy();
+
+        $this->postJson('/stripe/webhook', [
+            'id' => 'evt_test_2',
+            'type' => 'payout.paid',
+            'livemode' => false,
+            'data' => ['object' => []],
+        ]);
+
+        Log::shouldHaveReceived('info')->withArgs(function (string $message, array $context) {
+            return $message === 'Stripe webhook received.' && $context['handled'] === false;
+        })->once();
     }
 
     public function test_a_completed_checkout_activates_the_plan(): void

@@ -75,3 +75,44 @@ change, which is the other reason step 2 comes before step 4.
 the live endpoint confirms the signature is accepted. A ¥0 or smallest-amount
 live subscription on a real card, then cancelled and refunded, is the only
 thing that proves the whole path — test cards do not work in live mode.
+
+## Four things a go-live plan keeps getting wrong
+
+Each of these has been written into a task specification at least once. They
+are all checkable in a minute and each one silently breaks live billing.
+
+- **The endpoint is `/stripe/webhook`, not `/api/stripe/webhook`.** It is
+  declared in `bootstrap/app.php`, outside the API prefix, because Cashier's
+  own routes are ignored. Registering the `/api` form means every live delivery
+  404s and no subscription ever activates. `php artisan route:list --path=webhook`
+  settles it.
+- **`PlanSeeder` does not carry `stripe_price_id`.** The column is never
+  written by the seeder — that is deliberate, and it is what makes a reseed
+  safe after the prices are re-pointed. Editing the seeder and running
+  `db:seed` changes nothing. The ids live in the `plans` table and are changed
+  by `UPDATE ... WHERE name = ...`; `php artisan stripe:go-live` prints the
+  statements.
+- **The event is `invoice.paid`, not `invoice.payment_succeeded`.** Cashier's
+  parent handles the latter, so subscribing to it looks like it works — the
+  subscriptions table keeps up, and the organization-level status and `plan_id`
+  quietly do not.
+- **Price ids have no mode in them.** There is no `price_live_` prefix; both
+  modes mint `price_…`. The mode lives in the account the key belongs to, which
+  is why a test id silently resolves to nothing rather than to an error you can
+  read.
+
+## Live keys must never be reachable from the suite
+
+`phpunit.xml` pins `STRIPE_KEY`, `STRIPE_SECRET` and `STRIPE_WEBHOOK_SECRET`
+with `force="true"`. There is no `.env.testing`; without the pin the suite
+reads `.env`, and the Stripe SDK calls Guzzle directly rather than Laravel's
+HTTP client, so `Http::fake()` and `preventStrayRequests()` do not stop it. On
+live keys a stray call is a real charge. Do not remove the pin.
+
+## Every verified delivery is logged
+
+`StripeWebhookController::handleWebhook()` writes one `Stripe webhook received.`
+line per delivery with the type, the event id, `livemode`, and whether anything
+handles it. Stripe's dashboard shows that a delivery was made; only this says
+what this side did with it, and "not arriving" and "arriving and ignored" are
+otherwise the same picture.
