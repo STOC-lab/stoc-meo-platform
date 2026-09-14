@@ -65,7 +65,7 @@ export default function Proposals() {
                     <CardHeader>
                         <CardTitle>{analyses.data[0].type_label}</CardTitle>
                         <CardDescription>
-                            {analyses.data[0].period_start} 〜 {analyses.data[0].period_end}
+                            {formatDate(analyses.data[0].period_start)} 〜 {formatDate(analyses.data[0].period_end)}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="text-sm">

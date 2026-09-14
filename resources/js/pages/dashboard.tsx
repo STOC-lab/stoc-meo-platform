@@ -77,6 +77,8 @@ export default function Dashboard() {
                     <CardContent className="flex flex-col items-center gap-4">
                         {score.isPending ? (
                             <LoadingState label="計算中の結果を確認しています…" />
+                        ) : score.isError ? (
+                            <ErrorState error={score.error} />
                         ) : (
                             <>
                                 <ScoreGauge score={score.data?.score?.score ?? null} />
@@ -117,6 +119,8 @@ export default function Dashboard() {
                     <CardContent>
                         {score.isPending ? (
                             <LoadingState />
+                        ) : score.isError ? (
+                            <ErrorState error={score.error} />
                         ) : (score.data?.history.length ?? 0) < 2 ? (
                             <p className="py-12 text-center text-sm text-muted-foreground">
                                 推移を描くにはあと数日分のデータが必要です。
@@ -129,7 +133,11 @@ export default function Dashboard() {
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
-                <RankingSummaryCard keywords={keywords.data?.keywords ?? []} isPending={keywords.isPending} />
+                <RankingSummaryCard
+                    keywords={keywords.data?.keywords ?? []}
+                    isPending={keywords.isPending}
+                    error={keywords.isError ? keywords.error : null}
+                />
 
                 <Card>
                     <CardHeader>
@@ -198,16 +206,18 @@ export default function Dashboard() {
                         </div>
                         <CardDescription>
                             {latestAnalysis
-                                ? `${latestAnalysis.type_label} ・ ${latestAnalysis.period_start} 〜 ${latestAnalysis.period_end}`
-                                : 'プランに含まれる場合に自動生成されます'}
+                                ? `${latestAnalysis.type_label} ・ ${formatDate(latestAnalysis.period_start)} 〜 ${formatDate(latestAnalysis.period_end)}`
+                                : 'AIによる日次・週次の読み取り'}
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
                         {analyses.isPending ? (
                             <LoadingState />
+                        ) : analyses.isError ? (
+                            <ErrorState error={analyses.error} />
                         ) : latestAnalysis === null ? (
                             <p className="py-8 text-center text-sm text-muted-foreground">
-                                まだ分析がありません。
+                                まだ分析がありません。プランに含まれる場合、毎朝 5:00 に自動生成されます。
                             </p>
                         ) : (
                             <div className="flex flex-col gap-3 text-sm">
@@ -232,6 +242,12 @@ export default function Dashboard() {
                                         </ul>
                                     </div>
                                 ) : null}
+                                {/* Which model wrote it and when, so a reading
+                                    that is a week stale is visible as one. */}
+                                <p className="text-xs text-muted-foreground">
+                                    {formatDateTime(latestAnalysis.created_at)} 生成
+                                    {latestAnalysis.model ? ` ・ ${latestAnalysis.model}` : ''}
+                                </p>
                             </div>
                         )}
                     </CardContent>
@@ -248,6 +264,8 @@ export default function Dashboard() {
                     <CardContent>
                         {proposals.isPending ? (
                             <LoadingState />
+                        ) : proposals.isError ? (
+                            <ErrorState error={proposals.error} />
                         ) : openProposals.length === 0 ? (
                             <p className="py-8 text-center text-sm text-muted-foreground">
                                 未対応の提案はありません。
@@ -290,7 +308,15 @@ export default function Dashboard() {
  * it. Only the latest result is on the list endpoint, so the movement shown is
  * the one the API reports rather than one computed here from partial history.
  */
-function RankingSummaryCard({ keywords, isPending }: { keywords: Keyword[]; isPending: boolean }) {
+function RankingSummaryCard({
+    keywords,
+    isPending,
+    error,
+}: {
+    keywords: Keyword[];
+    isPending: boolean;
+    error: unknown;
+}) {
     const tracked = keywords.filter((keyword) => keyword.is_active);
 
     const series = tracked
@@ -318,6 +344,8 @@ function RankingSummaryCard({ keywords, isPending }: { keywords: Keyword[]; isPe
             <CardContent>
                 {isPending ? (
                     <LoadingState />
+                ) : error !== null ? (
+                    <ErrorState error={error} />
                 ) : tracked.length === 0 ? (
                     <div className="flex flex-col items-center gap-3 py-8">
                         <p className="text-sm text-muted-foreground">計測中のキーワードがありません。</p>

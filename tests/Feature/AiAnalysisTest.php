@@ -390,6 +390,33 @@ class AiAnalysisTest extends TestCase
             ->assertJsonPath('analyses.0.type', 'weekly');
     }
 
+    public function test_the_reading_carries_everything_the_dashboard_draws(): void
+    {
+        // The dashboard's AI card renders these five fields and nothing else.
+        // A reading that arrives without them shows as "no analysis yet",
+        // which is the one answer that is never true once a row exists.
+        Analysis::factory()->forLocation($this->location)->create([
+            'content' => [
+                'summary' => 'MEOスコアは42.7で前日比+0.8と小幅改善しました。',
+                'highlights' => ['MEOスコアが前日比で上昇', '順位の大きな下落はなし'],
+                'watch' => ['1件が圏外のまま'],
+                'figures' => ['score' => 42.7],
+            ],
+            'model' => 'claude-haiku-4-5-20251001',
+        ]);
+
+        $response = $this->actingAs($this->member('viewer'))
+            ->getJson("/api/v1/locations/{$this->location->id}/analyses")
+            ->assertOk()
+            ->assertJsonPath('analyses.0.summary', 'MEOスコアは42.7で前日比+0.8と小幅改善しました。')
+            ->assertJsonPath('analyses.0.highlights.1', '順位の大きな下落はなし')
+            ->assertJsonPath('analyses.0.watch.0', '1件が圏外のまま')
+            ->assertJsonPath('analyses.0.model', 'claude-haiku-4-5-20251001');
+
+        $this->assertCount(2, $response->json('analyses.0.highlights'));
+        $this->assertNotNull($response->json('analyses.0.created_at'));
+    }
+
     public function test_the_analyses_can_be_filtered_by_type(): void
     {
         Analysis::factory()->forLocation($this->location)->type(AnalysisType::Daily)
