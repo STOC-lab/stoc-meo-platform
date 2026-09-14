@@ -2,9 +2,11 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Concerns\RetriesTransientGbpFailures;
 use App\Models\Location;
 use App\Models\Review;
 use App\Services\GBP\Exceptions\GBPAuthenticationException;
+use App\Services\GBP\Exceptions\GBPException;
 use App\Services\GBP\GBPClientFactory;
 use App\Support\Tenancy;
 use Carbon\CarbonImmutable;
@@ -22,14 +24,24 @@ use Illuminate\Foundation\Queue\Queueable;
  * A connection Google has stopped honouring is not worth retrying: the client
  * has already marked it and raised the alert, so the job stops rather than
  * spending its attempts on an answer that will not change.
+ *
+ * Neither is a call Google merely metered. The sync reads every review it is
+ * given and matches on Google's id, so a night it never ran is made good by
+ * the next one; see the trait for what that means for `failed_jobs`.
  */
 class SyncReviewsJob implements ShouldQueue
 {
     use Queueable;
+    use RetriesTransientGbpFailures;
 
     public const QUEUE = 'gbp';
 
-    public int $tries = 3;
+    /**
+     * Four attempts rather than three, so the last of the backoff delays is
+     * reached: Google's per-minute meter is the failure being waited out, and
+     * the quarter of an hour is the wait that clears a daily one too.
+     */
+    public int $tries = 4;
 
     public int $timeout = 300;
 
@@ -55,10 +67,16 @@ class SyncReviewsJob implements ShouldQueue
                 return;
             }
 
-            $reviews = $clients->reviews($account)->reviews(
-                (string) $account->gbp_account_name,
-                (string) $this->location->gbp_location_id,
-            );
+            try {
+                $reviews = $clients->reviews($account)->reviews(
+                    (string) $account->gbp_account_name,
+                    (string) $this->location->gbp_location_id,
+                );
+            } catch (GBPException $e) {
+                $this->handleGbpFailure($e);
+
+                return;
+            }
 
             foreach ($reviews as $review) {
                 $this->store($review);

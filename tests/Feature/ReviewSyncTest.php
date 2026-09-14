@@ -9,12 +9,15 @@ use App\Models\Location;
 use App\Models\Organization;
 use App\Models\Review;
 use App\Models\User;
+use App\Services\GBP\Exceptions\GBPException;
 use App\Services\GBP\GBPClientFactory;
 use App\Support\Tenancy;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Queue\Job as QueueJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Mockery;
 use Tests\TestCase;
 
 /**
@@ -196,9 +199,75 @@ class ReviewSyncTest extends TestCase
     {
         $job = new SyncReviewsJob($this->location);
 
+        // Four attempts for three delays: 60s, then 300s, then 900s. With
+        // three the last delay would never be waited out.
         $this->assertSame('gbp', $job->queue);
-        $this->assertSame(3, $job->tries);
+        $this->assertSame(4, $job->tries);
         $this->assertSame([60, 300, 900], $job->backoff());
+        $this->assertCount($job->tries - 1, $job->backoff());
+    }
+
+    protected function runSyncOnAttempt(int $attempt): void
+    {
+        $job = new SyncReviewsJob($this->location);
+
+        $queueJob = Mockery::mock(QueueJob::class);
+        $queueJob->shouldReceive('attempts')->andReturn($attempt);
+
+        $job->setJob($queueJob)->handle(
+            app(GBPClientFactory::class),
+            app(Tenancy::class),
+        );
+    }
+
+    public function test_a_rate_limited_sweep_is_raised_so_the_queue_retries_it(): void
+    {
+        $account = $this->connect();
+
+        Http::fake(['mybusiness.googleapis.com/*' => Http::response([
+            'error' => ['message' => "Quota exceeded for quota metric 'Requests'"],
+        ], 429)]);
+
+        $this->expectException(GBPException::class);
+
+        try {
+            $this->runSyncOnAttempt(1);
+        } finally {
+            $this->assertSame(0, Review::acrossTenants()->count());
+            $this->assertNull($account->fresh()->last_synced_at);
+        }
+    }
+
+    public function test_a_rate_limit_that_outlasts_the_retries_does_not_reach_failed_jobs(): void
+    {
+        $account = $this->connect();
+
+        Http::fake(['mybusiness.googleapis.com/*' => Http::response([
+            'error' => ['message' => "Quota exceeded for quota metric 'Requests'"],
+        ], 429)]);
+
+        // The last attempt. Reviews are matched on Google's id, so the next
+        // sweep picks up everything this one missed.
+        $this->runSyncOnAttempt(4);
+
+        $this->assertNull($account->fresh()->last_synced_at);
+        $this->assertFalse(app(Tenancy::class)->check());
+    }
+
+    public function test_an_api_that_is_not_enabled_still_reaches_failed_jobs(): void
+    {
+        $this->connect();
+
+        // This is the refusal the nightly sweep has actually been getting.
+        // Retrying does not enable the API, so the last attempt still raises
+        // and somebody sees it.
+        Http::fake(['mybusiness.googleapis.com/*' => Http::response([
+            'error' => ['message' => 'Google My Business API has not been used in project 1 before or it is disabled.'],
+        ], 403)]);
+
+        $this->expectException(GBPException::class);
+
+        $this->runSyncOnAttempt(4);
     }
 
     public function test_the_job_leaves_the_tenant_as_it_found_it(): void

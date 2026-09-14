@@ -266,6 +266,60 @@ class GbpClientTest extends TestCase
         $this->assertSame(0, Alert::acrossTenants()->count());
     }
 
+    /**
+     * Ask Google for a review list and return whatever it refused with.
+     *
+     * One refusal per test: a second Http::fake() adds a stub behind the first
+     * rather than replacing it, so the second status would never be served.
+     */
+    protected function refusalOf(int $status, array $body = ['error' => ['message' => 'nope']]): GBPException
+    {
+        Http::fake(['mybusiness.googleapis.com/*' => Http::response($body, $status)]);
+
+        try {
+            $this->factory()->reviews($this->account())->reviews('accounts/999', 'locations/1');
+        } catch (GBPException $e) {
+            return $e;
+        }
+
+        $this->fail("HTTP {$status} should have been reported as a failure.");
+    }
+
+    public function test_a_rate_limit_is_a_failure_of_the_moment_rather_than_of_the_request(): void
+    {
+        $failure = $this->refusalOf(429, ['error' => [
+            'message' => "Quota exceeded for quota metric 'Requests' and limit 'Requests per minute'",
+        ]]);
+
+        $this->assertTrue($failure->isTransient());
+        $this->assertStringContainsString('429', $failure->getMessage());
+        $this->assertStringContainsString('Quota exceeded', $failure->getMessage());
+    }
+
+    public function test_a_failure_at_googles_end_is_worth_asking_again(): void
+    {
+        $this->assertTrue($this->refusalOf(503)->isTransient());
+    }
+
+    public function test_an_api_that_is_not_enabled_on_the_project_is_not_worth_asking_again(): void
+    {
+        // The 403 the nightly review sweep has been running into. Waiting does
+        // not enable an API, so this one is meant to reach failed_jobs.
+        $failure = $this->refusalOf(403, ['error' => [
+            'status' => 'PERMISSION_DENIED',
+            'message' => 'Google My Business API has not been used in project 1 before or it is disabled.',
+        ]]);
+
+        $this->assertFalse($failure->isTransient());
+        $this->assertNotInstanceOf(GBPAuthenticationException::class, $failure);
+        $this->assertSame(GbpTokenStatus::Active, GbpAccount::acrossTenants()->firstOrFail()->token_status);
+    }
+
+    public function test_a_request_google_rejected_is_not_worth_asking_again(): void
+    {
+        $this->assertFalse($this->refusalOf(400)->isTransient());
+    }
+
     public function test_a_connection_already_marked_unusable_is_refused_without_calling_google(): void
     {
         Http::fake();

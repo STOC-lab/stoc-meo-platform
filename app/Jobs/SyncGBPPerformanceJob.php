@@ -2,9 +2,11 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Concerns\RetriesTransientGbpFailures;
 use App\Models\GbpPerformanceMetric;
 use App\Models\Location;
 use App\Services\GBP\Exceptions\GBPAuthenticationException;
+use App\Services\GBP\Exceptions\GBPException;
 use App\Services\GBP\GBPClientFactory;
 use App\Support\Tenancy;
 use Carbon\CarbonImmutable;
@@ -19,14 +21,24 @@ use Illuminate\Foundation\Queue\Queueable;
  * the sweep asks for a window rather than a single day and overwrites what it
  * already holds. A day Google leaves out of the answer is a zero rather than a
  * gap, and is written as one so a report does not have to tell the two apart.
+ *
+ * Asking for a window is also what makes a night Google refused cheap: the
+ * next sweep covers the same days again, so a rate limit costs nothing once it
+ * has passed. See the trait for what that means for `failed_jobs`.
  */
 class SyncGBPPerformanceJob implements ShouldQueue
 {
     use Queueable;
+    use RetriesTransientGbpFailures;
 
     public const QUEUE = 'gbp';
 
-    public int $tries = 3;
+    /**
+     * Four attempts rather than three, so the last of the backoff delays is
+     * reached: Google's per-minute meter is the failure being waited out, and
+     * the quarter of an hour is the wait that clears a daily one too.
+     */
+    public int $tries = 4;
 
     public int $timeout = 300;
 
@@ -56,12 +68,18 @@ class SyncGBPPerformanceJob implements ShouldQueue
 
             $metrics = (array) config('gbp.performance.metrics', []);
 
-            $series = $clients->performance($account)->dailyMetrics(
-                (string) $this->location->gbp_location_id,
-                $metrics,
-                $start,
-                $end,
-            );
+            try {
+                $series = $clients->performance($account)->dailyMetrics(
+                    (string) $this->location->gbp_location_id,
+                    $metrics,
+                    $start,
+                    $end,
+                );
+            } catch (GBPException $e) {
+                $this->handleGbpFailure($e);
+
+                return;
+            }
 
             $this->store($series, $metrics, $start, $end);
 

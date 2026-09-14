@@ -9,13 +9,16 @@ use App\Models\GbpPerformanceMetric;
 use App\Models\Location;
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\GBP\Exceptions\GBPException;
 use App\Services\GBP\GBPClientFactory;
 use App\Support\Tenancy;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Queue\Job as QueueJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Mockery;
 use Tests\TestCase;
 
 /**
@@ -244,9 +247,90 @@ class GbpPerformanceTest extends TestCase
     {
         $job = new SyncGBPPerformanceJob($this->location);
 
+        // Four attempts for three delays: 60s, then 300s, then 900s. With
+        // three the last delay would never be waited out.
         $this->assertSame('gbp', $job->queue);
-        $this->assertSame(3, $job->tries);
+        $this->assertSame(4, $job->tries);
         $this->assertSame([60, 300, 900], $job->backoff());
+        $this->assertCount($job->tries - 1, $job->backoff());
+    }
+
+    /**
+     * A job carrying the attempt number the queue would have given it.
+     */
+    protected function jobOnAttempt(int $attempt): SyncGBPPerformanceJob
+    {
+        $job = new SyncGBPPerformanceJob($this->location);
+
+        $queueJob = Mockery::mock(QueueJob::class);
+        $queueJob->shouldReceive('attempts')->andReturn($attempt);
+
+        return $job->setJob($queueJob);
+    }
+
+    protected function runSyncOnAttempt(int $attempt): void
+    {
+        $this->jobOnAttempt($attempt)->handle(
+            app(GBPClientFactory::class),
+            app(Tenancy::class),
+        );
+    }
+
+    protected function fakeRateLimit(): void
+    {
+        Http::fake(['businessprofileperformance.googleapis.com/*' => Http::response([
+            'error' => [
+                'code' => 429,
+                'message' => "Quota exceeded for quota metric 'Requests' and limit 'Requests per minute' of service 'businessprofileperformance.googleapis.com'.",
+            ],
+        ], 429)]);
+    }
+
+    public function test_a_rate_limited_sweep_is_raised_so_the_queue_retries_it(): void
+    {
+        $account = $this->connect();
+        $this->fakeRateLimit();
+
+        $this->expectException(GBPException::class);
+
+        try {
+            $this->runSyncOnAttempt(1);
+        } finally {
+            // Nothing was written and the sync was not marked as done, so the
+            // retry records the real figures rather than landing beside a
+            // window of zeroes Google never sent.
+            $this->assertSame(0, GbpPerformanceMetric::acrossTenants()->count());
+            $this->assertNull($account->fresh()->last_synced_at);
+        }
+    }
+
+    public function test_a_rate_limit_that_outlasts_the_retries_does_not_reach_failed_jobs(): void
+    {
+        $account = $this->connect();
+        $this->fakeRateLimit();
+
+        // The last attempt. Tomorrow's sweep asks for this window again, so
+        // there is nothing here for a person to act on.
+        $this->runSyncOnAttempt(4);
+
+        $this->assertSame(0, GbpPerformanceMetric::acrossTenants()->count());
+        $this->assertNull($account->fresh()->last_synced_at);
+        $this->assertFalse(app(Tenancy::class)->check());
+    }
+
+    public function test_a_refusal_waiting_cannot_fix_still_reaches_failed_jobs(): void
+    {
+        $this->connect();
+
+        Http::fake(['businessprofileperformance.googleapis.com/*' => Http::response([
+            'error' => ['message' => 'Performance API has not been used in project 1 before or it is disabled.'],
+        ], 403)]);
+
+        // Unlike the rate limit above, the last attempt still raises: nobody
+        // enables an API by waiting, so this one is meant to be seen.
+        $this->expectException(GBPException::class);
+
+        $this->runSyncOnAttempt(4);
     }
 
     public function test_the_job_leaves_the_tenant_as_it_found_it(): void

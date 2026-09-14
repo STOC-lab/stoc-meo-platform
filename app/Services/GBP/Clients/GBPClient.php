@@ -102,10 +102,11 @@ abstract class GBPClient
         }
 
         if ($response->failed()) {
-            throw GBPException::for(
-                $this->api()->value,
-                'HTTP '.$response->status().' '.$this->errorMessage($response),
-            );
+            $reason = 'HTTP '.$response->status().' '.$this->errorMessage($response);
+
+            throw $this->isTransientStatus($response->status())
+                ? GBPException::transient($this->api()->value, $reason)
+                : GBPException::for($this->api()->value, $reason);
         }
 
         return (array) $response->json();
@@ -124,7 +125,7 @@ abstract class GBPClient
                 ->acceptJson()
                 ->{$method}(ltrim($path, '/'), $data);
         } catch (ConnectionException $e) {
-            throw GBPException::for($this->api()->value, $e->getMessage());
+            throw GBPException::transient($this->api()->value, $e->getMessage());
         }
     }
 
@@ -168,6 +169,22 @@ abstract class GBPClient
 
         return $status === 'PERMISSION_DENIED'
             && str_contains(strtolower($message), 'revoked');
+    }
+
+    /**
+     * Whether a refused call is worth making again.
+     *
+     * 429 is the one that matters here: Google meters the Business Profile
+     * APIs per minute and per day, and a sweep that runs into the ceiling is
+     * told nothing about the store front — the same request on the backoff is
+     * answered. Anything Google blames on itself counts too.
+     *
+     * 403 deliberately does not. Google answers an API that has not been
+     * enabled on the project with one, and no amount of waiting enables it.
+     */
+    protected function isTransientStatus(int $status): bool
+    {
+        return $status === 429 || $status >= 500;
     }
 
     protected function errorMessage(Response $response): string

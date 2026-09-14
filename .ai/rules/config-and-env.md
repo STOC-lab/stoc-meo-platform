@@ -71,10 +71,19 @@ Google/GBP and Anthropic. Instagram is the only one left with no credentials.
 Google/GBP has both halves: `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` with
 `GOOGLE_REDIRECT_URI` pointing at `/api/v1/auth/google/callback`, and one
 connected account in `gbp_accounts`. Being configured is not the same as being
-healthy — the nightly performance sync has been failing on HTTP 429 from
-`businessprofileperformance.googleapis.com`, which is a Google-side per-minute
-quota on the project, not a credential problem. Read the exception before
-blaming the connection.
+usable, and the two live failures are not the same failure:
+
+- The nightly review sweep gets `HTTP 403 Google My Business API has not been
+  used in project 198526648413 before or it is disabled` from
+  `mybusiness.googleapis.com`. That is the v4 legacy API, which Google gates
+  behind both enabling it on the project and an approved access request. Until
+  somebody does that in the Cloud Console, reviews do not sync — it is not a
+  credential problem and not something the code can retry its way out of.
+- The performance sweep has hit `HTTP 429` once, off Google's per-minute meter
+  on `businessprofileperformance.googleapis.com`.
+
+Read the exception before blaming the connection; `queues-and-schedule.md` has
+what each one now does to the job.
 
 `ANTHROPIC_API_KEY` is set, and the whole path is known to work end to end:
 `ai:insights daily` queued a `GenerateDailyAnalysisJob`, Horizon ran it off the
