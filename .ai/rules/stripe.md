@@ -12,6 +12,14 @@ So the keys are not the first step of going live. The prices are.
 
 ## The order of the switch
 
+`php artisan stripe:go-live` prints this whole section filled in from the
+database — the seven `stripe prices create` commands with the real names and
+amounts, the `UPDATE` statements, the organizations still carrying a test
+customer id, and the webhook command with the six events. Re-run it with
+`--price=<code>=price_…` to have the UPDATEs filled in. It reads and prints
+only; nothing in it writes anywhere. Use it rather than retyping the figures,
+and keep the list below as the reasoning behind each step.
+
 Stripe's live mode is a separate world: nothing created in test — prices,
 customers, subscriptions, webhook endpoints — exists in it. Do these in order,
 and do them in one sitting; between steps 2 and 4 the application cannot take a
