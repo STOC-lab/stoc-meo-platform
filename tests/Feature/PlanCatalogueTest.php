@@ -124,12 +124,14 @@ class PlanCatalogueTest extends TestCase
                 // and still needs somewhere to put it.
                 Feature::LocationLimit->value => 1,
                 Feature::BrandLimit->value => 1,
+                Feature::MemberLimit->value => 3,
             ],
             'ig_standard' => [
                 Feature::InstagramEnabled->value => true,
                 Feature::InstagramPostMonthlyLimit->value => 12,
                 Feature::LocationLimit->value => 1,
                 Feature::BrandLimit->value => 1,
+                Feature::MemberLimit->value => 3,
             ],
             'ig_premium' => [
                 Feature::InstagramEnabled->value => true,
@@ -137,6 +139,7 @@ class PlanCatalogueTest extends TestCase
                 Feature::InstagramAutoPublishEnabled->value => true,
                 Feature::LocationLimit->value => 1,
                 Feature::BrandLimit->value => 1,
+                Feature::MemberLimit->value => 3,
             ],
         ];
 

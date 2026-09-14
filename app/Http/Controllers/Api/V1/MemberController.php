@@ -73,6 +73,13 @@ class MemberController extends Controller
     {
         $this->authorize('manageMembers', $organization);
 
+        // Removing yourself is almost always a misclick on the wrong row, and
+        // the one case where it is not — leaving an organization — is a
+        // different action with different consequences. Refuse it here.
+        if ($request->user()?->getKey() === $user->getKey()) {
+            abort(422, '自分自身を組織から削除することはできません。');
+        }
+
         $current = $user->roleIn($organization);
 
         $this->guardOwnerSeat($request, $organization, $user, $current);

@@ -62,3 +62,35 @@ holds it.
 Where an action would be queued and then fail for the same reason — posting to
 Business Profile without a usable connection — disable it rather than letting
 the person write the post first.
+
+## There are five roles, and no "admin / member"
+
+`viewer`, `staff`, `location_admin`, `org_admin`, `owner` — the middleware
+alias `role:`, the policies and the invitations all speak these. A
+specification asking for a two-role split is asking for something this product
+does not have; showing two in the interface would name a role the rest of the
+application cannot act on. `resources/js/pages/members.tsx` holds the labels a
+shop owner reads.
+
+`owner` is the seat the guards protect, because it is the one that can manage
+billing. "The last admin" in a specification is the last owner here: it can be
+neither demoted nor removed, and only another owner may act on an owner.
+
+Removing yourself is refused outright (422). It is almost always the wrong row,
+and leaving an organization deliberately is a different action.
+
+## A seat is taken when the invitation goes out
+
+`member.limit` counts accepted members plus invitations still outstanding.
+Counting only accepted members would let an organization invite past its plan
+and discover it when the last person tried to sign in — and the one refused
+would be whoever accepted last, not whoever was invited last. Re-inviting an
+address replaces its outstanding invitation rather than adding one, so it does
+not pay for two seats.
+
+## Toasts
+
+`components/ui/toast.tsx`, no dependency. An error toast stays until it is
+dismissed; a success one clears itself, because it confirms something the
+reader just did. Outside the provider `useToast()` is a no-op rather than a
+crash.

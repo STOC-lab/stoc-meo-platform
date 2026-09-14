@@ -148,6 +148,7 @@ class PlanSeeder extends Seeder
                     Feature::InstagramPostMonthlyLimit->value => 4,
                     Feature::LocationLimit->value => 1,
                     Feature::BrandLimit->value => 1,
+                    Feature::MemberLimit->value => 3,
                 ],
             ],
             [
@@ -164,6 +165,7 @@ class PlanSeeder extends Seeder
                     Feature::InstagramPostMonthlyLimit->value => 12,
                     Feature::LocationLimit->value => 1,
                     Feature::BrandLimit->value => 1,
+                    Feature::MemberLimit->value => 3,
                 ],
             ],
             [
@@ -180,6 +182,7 @@ class PlanSeeder extends Seeder
                     Feature::InstagramPostMonthlyLimit->value => 30,
                     Feature::LocationLimit->value => 1,
                     Feature::BrandLimit->value => 1,
+                    Feature::MemberLimit->value => 3,
                     Feature::InstagramAutoPublishEnabled->value => true,
                 ],
             ],
@@ -236,6 +239,7 @@ class PlanSeeder extends Seeder
             // as a number, and give PREMIUM a ceiling only if one is ever set.
             Feature::LocationLimit->value => [1, 1, 1, null],
             Feature::BrandLimit->value => [1, 1, 3, null],
+            Feature::MemberLimit->value => [1, 3, 10, null],
         ];
     }
 }

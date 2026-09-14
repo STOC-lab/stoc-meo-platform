@@ -6,6 +6,7 @@ import {
     MessageSquare,
     Settings,
     TrendingUp,
+    Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -22,5 +23,6 @@ export const navigation: NavigationItem[] = [
     { to: '/reviews', label: '口コミ', icon: MessageSquare },
     { to: '/gbp-posts', label: '投稿', icon: Image },
     { to: '/proposals', label: '改善提案', icon: Lightbulb },
+    { to: '/members', label: 'メンバー', icon: Users },
     { to: '/settings', label: '設定', icon: Settings },
 ];

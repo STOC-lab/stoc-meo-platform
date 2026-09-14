@@ -7,6 +7,7 @@ import Dashboard from '@/pages/dashboard';
 import GbpPosts from '@/pages/gbp-posts';
 import Heatmaps from '@/pages/heatmaps';
 import Login from '@/pages/login';
+import Members from '@/pages/members';
 import NotFound from '@/pages/not-found';
 import Proposals from '@/pages/proposals';
 import Rankings from '@/pages/rankings';
@@ -46,6 +47,7 @@ export const router = createBrowserRouter([
                             { path: '/reviews', element: <Reviews /> },
                             { path: '/gbp-posts', element: <GbpPosts /> },
                             { path: '/proposals', element: <Proposals /> },
+                            { path: '/members', element: <Members /> },
                             { path: '/settings', element: <Settings /> },
                             // The earlier paths, kept working.
                             { path: '/heatmap', element: <Navigate to="/heatmaps" replace /> },

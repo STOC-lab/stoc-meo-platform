@@ -59,6 +59,9 @@ enum Feature: string
     case BrandLimit = 'brand.limit';
     case LocationLimit = 'location.limit';
 
+    // 組織に所属できる人数。招待を出した時点で席は埋まる。
+    case MemberLimit = 'member.limit';
+
     /**
      * The type a feature's value is stored and read as.
      */

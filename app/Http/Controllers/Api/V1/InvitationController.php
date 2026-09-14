@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\Feature;
 use App\Enums\OrganizationRole;
+use App\Exceptions\QuotaExceededException;
 use App\Http\Controllers\Controller;
 use App\Models\Invitation;
 use App\Models\Organization;
 use App\Models\User;
 use App\Notifications\OrganizationInvitationNotification;
+use App\Services\FeatureResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -24,6 +27,8 @@ use Illuminate\Validation\ValidationException;
  */
 class InvitationController extends Controller
 {
+    public function __construct(protected FeatureResolver $features) {}
+
     /**
      * The invitations that are still outstanding, newest first. Accepted ones
      * are left out: the invitee shows up in the member list instead.
@@ -74,6 +79,8 @@ class InvitationController extends Controller
             ]);
         }
 
+        $this->guardSeatAllowance($organization, $data['email']);
+
         [$plainToken, $hashedToken] = Invitation::generateToken();
 
         // Re-inviting the same address replaces the outstanding invitation, so
@@ -103,6 +110,45 @@ class InvitationController extends Controller
         return response()->json([
             'invitation' => $this->present($invitation),
         ], 201);
+    }
+
+    /**
+     * How many people the plan seats, counted from the members who are here
+     * plus the invitations still outstanding.
+     *
+     * An invitation holds a seat. Counting only accepted members would let an
+     * organization invite its way past the plan and only discover it when the
+     * last person tried to sign in — and the person refused would be whoever
+     * happened to accept last, not whoever was invited last.
+     *
+     * Re-inviting an address that already has an outstanding invitation
+     * replaces it rather than adding one, so that address does not pay twice.
+     *
+     * @throws QuotaExceededException
+     */
+    protected function guardSeatAllowance(Organization $organization, string $email): void
+    {
+        // A plan that does not mention the limit predates it; that is not the
+        // same as a plan seating nobody, and FeatureResolver answers 0 to both.
+        if (! $this->features->has(Feature::MemberLimit, $organization)) {
+            return;
+        }
+
+        $limit = $this->features->limit(Feature::MemberLimit, $organization);
+
+        if ($limit === null) {
+            return;
+        }
+
+        $used = $organization->memberships()->count() + Invitation::query()
+            ->where('organization_id', $organization->getKey())
+            ->whereNull('accepted_at')
+            ->where('email', '!=', $email)
+            ->count();
+
+        if ($used >= $limit) {
+            throw QuotaExceededException::for(Feature::MemberLimit, $limit, $used);
+        }
     }
 
     /**
@@ -225,6 +271,9 @@ class InvitationController extends Controller
     protected function present(Invitation $invitation): array
     {
         return [
+            // The list is what the members screen offers a "withdraw" button
+            // against, and the route binds on the id.
+            'id' => $invitation->id,
             'email' => $invitation->email,
             'role' => $invitation->role->value,
             'role_label' => $invitation->role->label(),

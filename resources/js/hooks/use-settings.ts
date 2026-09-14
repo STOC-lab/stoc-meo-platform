@@ -3,7 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/query';
 import { useCurrentOrganization } from '@/stores/auth';
-import type { Brand, GbpConnection, Member, ReportSummary } from '@/types/api';
+import type {
+    Brand,
+    GbpConnection,
+    Member,
+    OrganizationInvitation,
+    ReportSummary,
+    Role,
+} from '@/types/api';
 
 export function useBrands() {
     const organization = useCurrentOrganization();
@@ -25,10 +32,91 @@ export function useMembers() {
     return useQuery({
         queryKey: keys.members(organization?.id ?? null),
         enabled: organization !== null,
+        // An administrator's screen; a member without the role gets a 403 and
+        // retrying will not change that.
+        retry: false,
         queryFn: async (): Promise<Member[]> => {
             const { data } = await api.get<{ members: Member[] }>(`/organizations/${organization!.id}/members`);
 
             return data.members;
+        },
+    });
+}
+
+/** The invitations that have gone out and not yet been accepted. */
+export function useInvitations() {
+    const organization = useCurrentOrganization();
+
+    return useQuery({
+        queryKey: keys.invitations(organization?.id ?? null),
+        enabled: organization !== null,
+        retry: false,
+        queryFn: async (): Promise<OrganizationInvitation[]> => {
+            const { data } = await api.get<{ invitations: OrganizationInvitation[] }>(
+                `/organizations/${organization!.id}/invitations`,
+            );
+
+            return data.invitations;
+        },
+    });
+}
+
+export function useInviteMember() {
+    const organization = useCurrentOrganization();
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async ({ email, role }: { email: string; role: Role }) => {
+            const { data } = await api.post(`/organizations/${organization!.id}/invitations`, { email, role });
+
+            return data;
+        },
+        // The seat the invitation takes counts against the plan, so the member
+        // list is refreshed alongside the invitation list.
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: keys.invitations(organization?.id ?? null) });
+            queryClient.invalidateQueries({ queryKey: keys.members(organization?.id ?? null) });
+        },
+    });
+}
+
+export function useRevokeInvitation() {
+    const organization = useCurrentOrganization();
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (invitationId: number) => {
+            await api.delete(`/organizations/${organization!.id}/invitations/${invitationId}`);
+        },
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.invitations(organization?.id ?? null) }),
+    });
+}
+
+export function useUpdateMemberRole() {
+    const organization = useCurrentOrganization();
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async ({ id, role }: { id: number; role: Role }) => {
+            const { data } = await api.patch(`/organizations/${organization!.id}/members/${id}`, { role });
+
+            return data;
+        },
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.members(organization?.id ?? null) }),
+    });
+}
+
+export function useRemoveMember() {
+    const organization = useCurrentOrganization();
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (memberId: number) => {
+            await api.delete(`/organizations/${organization!.id}/members/${memberId}`);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: keys.members(organization?.id ?? null) });
+            queryClient.invalidateQueries({ queryKey: keys.invitations(organization?.id ?? null) });
         },
     });
 }

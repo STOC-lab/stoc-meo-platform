@@ -35,6 +35,7 @@ export const keys = {
     locations: (organizationId: number | null) => ['locations', organizationId] as const,
     brands: (organizationId: number | null) => ['brands', organizationId] as const,
     members: (organizationId: number | null) => ['members', organizationId] as const,
+    invitations: (organizationId: number | null) => ['invitations', organizationId] as const,
     keywords: (locationId: number | null) => ['keywords', locationId] as const,
     rankingHistory: (locationId: number | null, keywordId: number | null) =>
         ['ranking-history', locationId, keywordId] as const,

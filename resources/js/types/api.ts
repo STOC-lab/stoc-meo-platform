@@ -293,6 +293,20 @@ export interface Member {
     email: string;
     role: Role;
     role_label?: string;
+    joined_at: string | null;
+}
+
+/** An invitation that has gone out and not yet been accepted. */
+export interface OrganizationInvitation {
+    id: number;
+    email: string;
+    role: Role;
+    role_label?: string;
+    invited_by: string | null;
+    expires_at: string | null;
+    accepted: boolean;
+    expired: boolean;
+    requires_registration: boolean;
 }
 
 export interface GbpConnection {
