@@ -13,10 +13,12 @@ use Illuminate\Database\Seeder;
  *
  * What is sold today is MEO FREE, MEO PREMIUM on a one-, two-, three- or
  * five-year term plus a 6-month special, and IG LINE on the same four terms.
- * The monthly LIGHT and STANDARD tiers of both products are kept as rows but
- * marked inactive: organizations still sitting on one need their entitlements
- * to keep resolving, and BillingController refuses a checkout for an inactive
- * plan, which is what retiring a plan means here.
+ * Every monthly tier of both products is kept as a row but marked inactive:
+ * organizations still sitting on one need their entitlements to keep
+ * resolving, and BillingController refuses a checkout for an inactive plan,
+ * which is what retiring a plan means here. The monthly rows are also what the
+ * term plans take their entitlements from, so they are the catalogue's memory
+ * of what MEO PREMIUM and the Instagram tier grant.
  *
  * `price` is the amount of one charge in JPY, not a monthly figure: ¥384,000
  * billed yearly, ¥210,000 charged once. The month the customer is committed
@@ -168,7 +170,7 @@ class PlanSeeder extends Seeder
                 'price' => 30000,
                 'trial_days' => 0,
                 'sort_order' => 40,
-                'is_active' => true,
+                'is_active' => false,
                 'features' => $this->meoFeatures(Plan::TIER_PREMIUM),
             ],
             [
@@ -216,7 +218,7 @@ class PlanSeeder extends Seeder
                 'price' => 15000,
                 'trial_days' => 0,
                 'sort_order' => 70,
-                'is_active' => true,
+                'is_active' => false,
                 'features' => $this->instagramFeatures(),
             ],
             ...$this->termPlans(),

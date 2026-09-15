@@ -34,12 +34,17 @@ The 6-month special carries `interval = one_time` and `Plan::isRecurring()`
 answers false for it. It has no Stripe `recurring` block, so nothing renews it
 and Cashier's subscription path is not what sells it.
 
-MEO LIGHT, MEO STANDARD, IG LIGHT and IG STANDARD are retired, which here means
-`is_active = false` and not deleted: an organization still on one needs its
-entitlements to keep resolving, and `BillingController` refuses a checkout for
-an inactive plan. The monthly MEO PREMIUM and IG PREMIUM rows are **still
-active** — the 2026-09-15 specification retired the LIGHT and STANDARD tiers and
-said nothing about them, and one organization is subscribed to MEO PREMIUM.
+Every monthly tier — MEO LIGHT, MEO STANDARD, MEO PREMIUM, IG LIGHT, IG
+STANDARD, IG PREMIUM — is retired, which here means `is_active = false` and not
+deleted. An organization still on one needs its entitlements to keep resolving,
+and `BillingController` refuses a checkout for an inactive plan, so the row is
+what carries a live customer and blocks a new sale at the same time. One
+organization is on monthly MEO PREMIUM and stays there.
+
+The monthly rows are also the catalogue's memory of what each tier grants: the
+term plans take their features from MEO PREMIUM and from the Instagram tier
+rather than restating them, so deleting a retired row would take nine plans'
+entitlements with it.
 
 Every MEO PREMIUM term carries exactly the MEO PREMIUM entitlements and every IG
 LINE term exactly the Instagram ones. A term buys the same product for longer at

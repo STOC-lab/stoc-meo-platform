@@ -47,17 +47,13 @@ class PlanCatalogueTest extends TestCase
             'meo_free',
             'meo_premium_1y', 'meo_premium_2y', 'meo_premium_3y', 'meo_premium_5y', 'meo_premium_6m',
             'ig_line_1y', 'ig_line_2y', 'ig_line_3y', 'ig_line_5y',
-        ], Plan::active()
-            ->whereNotIn('code', ['meo_premium', 'ig_premium'])
-            ->orderBy('sort_order')
-            ->pluck('code')
-            ->all());
+        ], Plan::active()->orderBy('sort_order')->pluck('code')->all());
 
         // Retiring a plan is marking it inactive, not deleting it: an
         // organization still on one needs its entitlements to keep resolving,
         // and BillingController refuses a checkout for an inactive plan.
         $this->assertSame(
-            ['meo_light', 'meo_standard', 'ig_light', 'ig_standard'],
+            ['meo_light', 'meo_standard', 'meo_premium', 'ig_light', 'ig_standard', 'ig_premium'],
             Plan::where('is_active', false)->orderBy('sort_order')->pluck('code')->all(),
         );
     }
