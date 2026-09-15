@@ -19,6 +19,7 @@ export default function AcceptInvitation() {
     const navigate = useNavigate();
 
     const status = useAuthStore((state) => state.status);
+    const currentUser = useAuthStore((state) => state.user);
     const loadProfile = useAuthStore((state) => state.loadProfile);
     const setCurrentOrganization = useOrganizationStore((state) => state.setCurrent);
 
@@ -31,7 +32,16 @@ export default function AcceptInvitation() {
     const [submitting, setSubmitting] = useState(false);
 
     const needsRegistration = invitation?.requires_registration ?? false;
+    const needsPassword = invitation?.requires_password ?? false;
     const signedIn = status === 'authenticated';
+
+    // Whoever is signed in here need not be the invitee — the link may have
+    // been opened in a browser someone else was using, or by the shop owner
+    // checking it. Accepting switches the session over rather than refusing.
+    const signedInAsSomeoneElse =
+        signedIn && invitation !== null && currentUser !== null
+            ? currentUser.email.toLowerCase() !== invitation.email.toLowerCase()
+            : false;
 
     useEffect(() => {
         if (status === 'idle') {
@@ -68,7 +78,9 @@ export default function AcceptInvitation() {
         try {
             await api.post(`invitations/${token}/accept`, needsRegistration
                 ? { name, password, password_confirmation: passwordConfirmation }
-                : {});
+                : needsPassword
+                    ? { password }
+                    : {});
 
             // The membership list has changed, so pull it again and land the
             // user inside the organization they just joined.
@@ -122,23 +134,6 @@ export default function AcceptInvitation() {
         );
     }
 
-    // An address that already has an account must sign in before it can accept.
-    if (!needsRegistration && !signedIn) {
-        return (
-            <Shell
-                title={`${invitation.organization.name} への招待`}
-                description={`${invitation.email} 宛ての招待です。`}
-            >
-                <p className="text-sm text-muted-foreground">
-                    このメールアドレスのアカウントは既に登録されています。ログインしてから招待を承諾してください。
-                </p>
-                <Button asChild className="mt-4">
-                    <Link to="/login">ログインへ</Link>
-                </Button>
-            </Shell>
-        );
-    }
-
     return (
         <Shell
             title={`${invitation.organization.name} への招待`}
@@ -156,10 +151,36 @@ export default function AcceptInvitation() {
                     </Alert>
                 ) : null}
 
+                {signedInAsSomeoneElse ? (
+                    <Alert>
+                        <AlertCircle aria-hidden="true" />
+                        <AlertDescription>
+                            現在 {currentUser?.email} でログイン中です。承諾すると {invitation.email} に切り替わります。
+                        </AlertDescription>
+                    </Alert>
+                ) : null}
+
                 <div className="flex flex-col gap-2">
                     <Label htmlFor="email">メールアドレス</Label>
                     <Input id="email" value={invitation.email} readOnly disabled />
                 </div>
+
+                {needsPassword ? (
+                    <div className="flex flex-col gap-2">
+                        <Label htmlFor="password">パスワード</Label>
+                        <Input
+                            id="password"
+                            type="password"
+                            required
+                            autoComplete="current-password"
+                            value={password}
+                            onChange={(event) => setPassword(event.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            {invitation.email} のアカウントは既に登録されています。そのパスワードを入力してください。
+                        </p>
+                    </div>
+                ) : null}
 
                 {needsRegistration ? (
                     <>

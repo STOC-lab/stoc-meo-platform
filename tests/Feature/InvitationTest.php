@@ -287,9 +287,10 @@ class InvitationTest extends TestCase
 
         $this->assertSame(OrganizationRole::OrgAdmin, $user->roleIn($this->organization));
         $this->assertNotNull($invitation->refresh()->accepted_at);
+        $this->assertAuthenticatedAs($user);
     }
 
-    public function test_an_existing_account_must_sign_in_before_accepting(): void
+    public function test_an_existing_account_cannot_be_taken_over_by_holding_the_link(): void
     {
         $user = User::factory()->create(['email' => 'known@example.com']);
         [, $token] = $this->invite('known@example.com');
@@ -297,24 +298,104 @@ class InvitationTest extends TestCase
         $this->fromSpa()
             ->postJson("/api/v1/invitations/{$token}/accept", [
                 'name' => '乗っ取り',
-                'password' => 'password-1234',
-                'password_confirmation' => 'password-1234',
+                'password' => 'not-the-password',
+                'password_confirmation' => 'not-the-password',
             ])
-            ->assertUnauthorized();
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('password');
 
         $this->assertFalse($user->belongsToOrganization($this->organization));
         $this->assertGuest('web');
     }
 
-    public function test_a_different_signed_in_user_cannot_accept(): void
+    public function test_an_existing_account_accepts_by_supplying_its_password(): void
     {
+        $user = User::factory()->create(['email' => 'known@example.com']);
+        [$invitation, $token] = $this->invite('known@example.com', OrganizationRole::OrgAdmin);
+
+        $this->fromSpa()
+            ->postJson("/api/v1/invitations/{$token}/accept", ['password' => 'password'])
+            ->assertOk()
+            ->assertJsonPath('invitation.accepted', true);
+
+        $this->assertSame(OrganizationRole::OrgAdmin, $user->roleIn($this->organization));
+        $this->assertNotNull($invitation->refresh()->accepted_at);
+        $this->assertAuthenticatedAs($user);
+    }
+
+    /**
+     * The bug this replaced: an invitee already signed in under another address
+     * — or a browser left signed in as somebody else — was answered 403 and had
+     * no way past it, even though the link itself was perfectly good.
+     */
+    public function test_a_signed_in_user_can_accept_an_invitation_addressed_to_somebody_else(): void
+    {
+        $other = User::factory()->create(['email' => 'someone.else@example.com']);
+        [$invitation, $token] = $this->invite('new@example.com', OrganizationRole::OrgAdmin);
+
+        $this->actingAs($other)
+            ->fromSpa()
+            ->postJson("/api/v1/invitations/{$token}/accept", [
+                'name' => '阿部 健一',
+                'password' => 'password-1234',
+                'password_confirmation' => 'password-1234',
+            ])
+            ->assertOk()
+            ->assertJsonPath('invitation.accepted', true);
+
+        $invitee = User::where('email', 'new@example.com')->firstOrFail();
+
+        $this->assertSame('阿部 健一', $invitee->name);
+        $this->assertSame(OrganizationRole::OrgAdmin, $invitee->roleIn($this->organization));
+        $this->assertNotNull($invitation->refresh()->accepted_at);
+
+        // The session is handed over to the account the invitation names, so
+        // the dashboard the SPA lands on is the invitee's.
+        $this->assertAuthenticatedAs($invitee);
+        $this->assertFalse($other->belongsToOrganization($this->organization));
+    }
+
+    public function test_a_signed_in_user_accepting_for_an_existing_account_still_needs_its_password(): void
+    {
+        $other = User::factory()->create(['email' => 'someone.else@example.com']);
+        $invitee = User::factory()->create(['email' => 'known@example.com']);
+        [$invitation, $token] = $this->invite('known@example.com');
+
+        $this->actingAs($other)
+            ->fromSpa()
+            ->postJson("/api/v1/invitations/{$token}/accept", ['password' => 'not-the-password'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('password');
+
+        $this->assertFalse($invitee->belongsToOrganization($this->organization));
+        $this->assertNull($invitation->refresh()->accepted_at);
+        $this->assertAuthenticatedAs($other);
+
+        $this->actingAs($other)
+            ->fromSpa()
+            ->postJson("/api/v1/invitations/{$token}/accept", ['password' => 'password'])
+            ->assertOk();
+
+        $this->assertSame(OrganizationRole::Staff, $invitee->roleIn($this->organization));
+        $this->assertAuthenticatedAs($invitee);
+    }
+
+    public function test_the_link_says_when_the_invitee_has_to_supply_a_password(): void
+    {
+        User::factory()->create(['email' => 'known@example.com']);
         [, $token] = $this->invite('known@example.com');
 
-        $this->actingAs(User::factory()->create(['email' => 'someone.else@example.com']))
-            ->postJson("/api/v1/invitations/{$token}/accept")
-            ->assertForbidden();
+        $this->getJson("/api/v1/invitations/{$token}")
+            ->assertOk()
+            ->assertJsonPath('invitation.requires_registration', false)
+            ->assertJsonPath('invitation.requires_password', true);
 
-        $this->assertDatabaseCount('organization_users', 1);
+        [, $fresh] = $this->invite('new@example.com');
+
+        $this->getJson("/api/v1/invitations/{$fresh}")
+            ->assertOk()
+            ->assertJsonPath('invitation.requires_registration', true)
+            ->assertJsonPath('invitation.requires_password', false);
     }
 
     public function test_an_accepted_invitation_cannot_be_reused(): void

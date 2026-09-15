@@ -13,4 +13,5 @@ export interface Invitation {
     accepted: boolean;
     expired: boolean;
     requires_registration: boolean;
+    requires_password: boolean;
 }

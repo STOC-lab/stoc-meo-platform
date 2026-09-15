@@ -88,6 +88,33 @@ would be whoever accepted last, not whoever was invited last. Re-inviting an
 address replaces its outstanding invitation rather than adding one, so it does
 not pay for two seats.
 
+## The open session does not decide who accepts an invitation
+
+The browser that opens an invitation link is not necessarily signed in as the
+invitee — the link gets opened in a browser someone else was using, or by the
+shop owner checking it went out. Refusing acceptance because the session names
+a different address answered 403 with no way past it and stranded the
+invitation on a token that was perfectly good. Do not reinstate that check.
+
+`InvitationController::accept()` reads the invitation, not the session:
+
+- Signed in **as** the invitee — accept, session untouched.
+- The address has **no account** — register it, then hand the session over.
+- The address **has an account** — ask for that account's password, check it,
+  then hand the session over.
+
+The last one is the load-bearing branch. Holding the token proves control of
+the mailbox, which is enough to create the account it names but not enough to
+be handed a session on one that already exists — the link leaks through
+history, forwarded mail and screenshots, and the account behind an invited
+address may be an `owner` somewhere else with billing on it. The route's
+`throttle:10,1` is what keeps that password check from being an oracle.
+
+`requires_registration` and `requires_password` on the presented invitation are
+what the accept screen reads to decide which fields to show; `requires_password`
+is relative to the current session, so it is false once the invitee is signed
+in. The email field is always fixed from the token and never editable.
+
 ## Toasts
 
 `components/ui/toast.tsx`, no dependency. An error toast stays until it is

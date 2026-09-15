@@ -16,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
@@ -178,7 +179,16 @@ class InvitationController extends Controller
     }
 
     /**
-     * Accept the invitation, registering the invitee when they have no account.
+     * Accept the invitation as the address it names, registering that account
+     * when it does not exist yet.
+     *
+     * A session that is already open belongs to whoever was last using the
+     * browser, which is not necessarily the person the link was mailed to — an
+     * invitee who is signed in under a personal address, or a shop owner who
+     * opened the link to check it. Refusing the link because the open session
+     * names somebody else stranded the invitation on a working token, so the
+     * session no longer decides anything: the invitation does, and the
+     * acceptance hands the browser over to the account it names.
      */
     public function accept(Request $request, string $token): JsonResponse
     {
@@ -190,25 +200,23 @@ class InvitationController extends Controller
                 : 'この招待は有効期限が切れています。');
         }
 
-        $user = $request->user();
+        $signedIn = $request->user();
+        $existing = $this->accountFor($invitation);
 
-        if ($user !== null) {
-            abort_unless(
-                $this->matchesInvitation($user, $invitation),
-                403,
-                'この招待は別のメールアドレス宛てに発行されています。',
-            );
+        if ($signedIn !== null && $this->matchesInvitation($signedIn, $invitation)) {
+            // Already signed in as the invitee; the session stays as it is.
+            $user = $signedIn;
+            $handOverSession = false;
         } else {
             // Holding the token proves control of the mailbox, which is enough
-            // to create the account it was addressed to — but not enough to
-            // sign in as an account that already exists.
-            abort_if(
-                User::where('email', $invitation->email)->exists(),
-                401,
-                'このメールアドレスのアカウントは既に存在します。ログインしてから招待を承諾してください。',
-            );
+            // to create the account it was addressed to — but not enough to be
+            // handed a session on an account that already exists, whatever the
+            // browser is signed in as. That one proves itself by its password.
+            $user = $existing === null
+                ? $this->registerInvitee($request, $invitation)
+                : $this->authenticateInvitee($request, $existing);
 
-            $user = $this->registerInvitee($request, $invitation);
+            $handOverSession = true;
         }
 
         DB::transaction(function () use ($invitation, $user) {
@@ -219,7 +227,7 @@ class InvitationController extends Controller
             $invitation->forceFill(['accepted_at' => now()])->save();
         });
 
-        if ($request->user() === null) {
+        if ($handOverSession) {
             $this->requireSession($request);
 
             Auth::login($user);
@@ -227,7 +235,7 @@ class InvitationController extends Controller
         }
 
         return response()->json([
-            'invitation' => $this->present($invitation->refresh()),
+            'invitation' => $this->present($invitation->refresh(), $user),
         ]);
     }
 
@@ -246,6 +254,31 @@ class InvitationController extends Controller
             'email' => $invitation->email,
             'password' => $data['password'],
         ]);
+    }
+
+    /**
+     * Prove the invitee is who the invitation names, when that account already
+     * exists. The route is throttled, which is what keeps this from being a
+     * password oracle for any address someone holds a link for.
+     */
+    protected function authenticateInvitee(Request $request, User $user): User
+    {
+        $data = $request->validate([
+            'password' => ['required', 'string'],
+        ]);
+
+        if (! Hash::check($data['password'], $user->password)) {
+            throw ValidationException::withMessages([
+                'password' => 'パスワードが正しくありません。',
+            ]);
+        }
+
+        return $user;
+    }
+
+    protected function accountFor(Invitation $invitation): ?User
+    {
+        return User::where('email', $invitation->email)->first();
     }
 
     protected function matchesInvitation(User $user, Invitation $invitation): bool
@@ -268,8 +301,11 @@ class InvitationController extends Controller
     /**
      * @return array<string, mixed>
      */
-    protected function present(Invitation $invitation): array
+    protected function present(Invitation $invitation, ?User $viewer = null): array
     {
+        $existing = $this->accountFor($invitation);
+        $viewer ??= Auth::user();
+
         return [
             // The list is what the members screen offers a "withdraw" button
             // against, and the route binds on the id.
@@ -285,7 +321,12 @@ class InvitationController extends Controller
             'expires_at' => $invitation->expires_at->toIso8601String(),
             'accepted' => $invitation->isAccepted(),
             'expired' => $invitation->isExpired(),
-            'requires_registration' => ! User::where('email', $invitation->email)->exists(),
+            'requires_registration' => $existing === null,
+            // An account that already exists proves itself by its password
+            // before the browser is handed over to it — unless it is the
+            // session that is already open.
+            'requires_password' => $existing !== null
+                && ($viewer === null || ! $this->matchesInvitation($viewer, $invitation)),
         ];
     }
 
