@@ -22,6 +22,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'price',
     'currency',
     'interval',
+    'billing_period_months',
+    'phases',
     'stripe_price_id',
     'trial_days',
     'sort_order',
@@ -43,6 +45,17 @@ class Plan extends Model
 
     public const TIER_PREMIUM = 'premium';
 
+    public const INTERVAL_MONTH = 'month';
+
+    public const INTERVAL_YEAR = 'year';
+
+    /**
+     * A plan bought outright rather than subscribed to. The 6-month MEO
+     * PREMIUM special is the only one: it is a single charge that buys a fixed
+     * term, so it has no Stripe recurring price and Cashier never renews it.
+     */
+    public const INTERVAL_ONE_TIME = 'one_time';
+
     /**
      * @return array<string, string>
      */
@@ -50,6 +63,8 @@ class Plan extends Model
     {
         return [
             'price' => 'integer',
+            'billing_period_months' => 'integer',
+            'phases' => 'integer',
             'trial_days' => 'integer',
             'sort_order' => 'integer',
             'is_active' => 'boolean',
@@ -91,6 +106,16 @@ class Plan extends Model
     public function isFree(): bool
     {
         return $this->price === 0;
+    }
+
+    /**
+     * Whether Stripe should mint a recurring price for this plan. A one-time
+     * plan is charged once and its term is carried by billing_period_months,
+     * not by Stripe renewing anything.
+     */
+    public function isRecurring(): bool
+    {
+        return $this->interval !== self::INTERVAL_ONE_TIME;
     }
 
     /**

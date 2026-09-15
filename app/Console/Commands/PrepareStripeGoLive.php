@@ -161,6 +161,14 @@ class PrepareStripeGoLive extends Command
     {
         $this->components->info('1. Create the products and prices in live mode');
 
+        $this->comment('php artisan stripe:create-products --mode=live does all of this from the');
+        $this->comment('catalogue and writes the price ids straight onto the plans, which makes');
+        $this->comment('step 2 unnecessary. It checks --mode against STRIPE_SECRET first, so it');
+        $this->comment('cannot be the thing that creates a live price against a test key. The');
+        $this->comment('commands below are the same work by hand, for when you want to watch it');
+        $this->comment('happen one plan at a time.');
+        $this->newLine();
+
         $this->comment('--live is on every command on purpose: the CLI defaults to test mode,');
         $this->comment('and a price created in the wrong mode looks right and resolves nowhere.');
         $this->comment('JPY is zero-decimal, so --unit-amount is the yen figure itself —');
@@ -171,7 +179,7 @@ class PrepareStripeGoLive extends Command
         $this->newLine();
 
         foreach ($plans as $plan) {
-            $this->line("# {$plan->name} — ¥".number_format((int) $plan->price).'/月');
+            $this->line("# {$plan->name} — ".$this->priceSummary($plan));
             $this->line('stripe products create --live \\');
             $this->line('  --name='.escapeshellarg((string) $plan->name).' \\');
             $this->line('  --description='.escapeshellarg((string) $plan->description).' \\');
@@ -181,7 +189,14 @@ class PrepareStripeGoLive extends Command
             $this->line('  --product=prod_REPLACE_WITH_THE_ID_ABOVE \\');
             $this->line('  --unit-amount='.(int) $plan->price.' \\');
             $this->line('  --currency='.strtolower((string) $plan->currency).' \\');
-            $this->line('  --recurring[interval]='.$plan->interval.' \\');
+
+            // A one-time plan has no recurring block at all. Passing
+            // --recurring[interval]=one_time is not a price Stripe refuses to
+            // make, it is a price it refuses to understand.
+            if ($plan->isRecurring()) {
+                $this->line('  --recurring[interval]='.$plan->interval.' \\');
+            }
+
             $this->line("  --lookup-key={$plan->code}");
             $this->newLine();
         }
@@ -348,6 +363,22 @@ class PrepareStripeGoLive extends Command
         $this->comment('path is confirmed by one smallest-amount live subscription, cancelled');
         $this->comment('and refunded afterwards.');
         $this->newLine();
+    }
+
+    /**
+     * The charge a plan's price stands for, said in full: the amount and how
+     * often it falls. A yearly plan's `price` is not a monthly figure, and
+     * printing it as one is how a ¥384,000 plan gets read as ¥384,000 a month.
+     */
+    protected function priceSummary(Plan $plan): string
+    {
+        $amount = '¥'.number_format((int) $plan->price);
+
+        return match ($plan->interval) {
+            Plan::INTERVAL_MONTH => $amount.'/月',
+            Plan::INTERVAL_YEAR => $amount.'/年 × '.$plan->phases.'回（'.$plan->billing_period_months.'ヶ月契約）',
+            default => $amount.' 一括（'.$plan->billing_period_months.'ヶ月契約）',
+        };
     }
 
     protected function webhookUrl(): string

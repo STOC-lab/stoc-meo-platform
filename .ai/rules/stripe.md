@@ -1,19 +1,81 @@
 # Stripe
 
-## The keys are test keys, and the price ids in the database match them
+## The keys are test keys, and most of the catalogue has no price at all
 
-`.env` carries `sk_test_…` / `pk_test_…`, and all seven rows in `plans` hold
-`stripe_price_id` values minted under that test account. **A test price id does
-not resolve in live mode.** Swapping only the keys leaves every plan pointing at
-a price Stripe will answer `No such price` for, and `BillingService::subscribe()`
-fails on the first checkout anyone attempts.
+`.env` carries `sk_test_…` / `pk_test_…`. The seven monthly rows in `plans` hold
+`stripe_price_id` values minted under that test account; the nine contract terms
+added on 2026-09-15 hold none. **A test price id does not resolve in live mode.**
+Swapping only the keys leaves every plan pointing at a price Stripe will answer
+`No such price` for, and `BillingService::checkoutUrl()` fails on the first
+checkout anyone attempts.
 
 So the keys are not the first step of going live. The prices are.
+
+## What is actually sold
+
+Ten plans, as of 2026-09-15:
+
+- **MEO FREE**, ¥0, and so no Stripe price — `BillingController` reads the empty
+  `stripe_price_id` as exactly that and refuses the checkout.
+- **MEO PREMIUM** on a 1-, 2-, 3- or 5-year term (¥384,000 / ¥324,000 /
+  ¥300,000 / ¥252,000 a year) plus a **6-month special** at ¥210,000 charged
+  once.
+- **IG LINE** on the same four terms (¥180,000 / ¥156,000 / ¥132,000 /
+  ¥108,000 a year).
+
+`plans.price` is **the amount of one charge**, never a monthly figure. A yearly
+term's price is its yearly charge; the 6-month special's is the whole thing.
+`billing_period_months` is what the customer is committed to and `phases` is how
+many charges make that up — a two-year term is two phases of ¥324,000, not one
+charge of ¥648,000. Dividing `price` by `billing_period_months` is wrong for
+every yearly plan; divide by 12.
+
+The 6-month special carries `interval = one_time` and `Plan::isRecurring()`
+answers false for it. It has no Stripe `recurring` block, so nothing renews it
+and Cashier's subscription path is not what sells it.
+
+MEO LIGHT, MEO STANDARD, IG LIGHT and IG STANDARD are retired, which here means
+`is_active = false` and not deleted: an organization still on one needs its
+entitlements to keep resolving, and `BillingController` refuses a checkout for
+an inactive plan. The monthly MEO PREMIUM and IG PREMIUM rows are **still
+active** — the 2026-09-15 specification retired the LIGHT and STANDARD tiers and
+said nothing about them, and one organization is subscribed to MEO PREMIUM.
+
+Every MEO PREMIUM term carries exactly the MEO PREMIUM entitlements and every IG
+LINE term exactly the Instagram ones. A term buys the same product for longer at
+a lower rate; nothing about what it unlocks changes with it. LINE is in the name
+and not in the features — there is no LINE key in the `Feature` enum and nothing
+gates on one.
+
+## Creating the prices: `stripe:create-products`
+
+`php artisan stripe:create-products --mode=live` makes a product and a price for
+every active paid plan and writes the price id onto the plan row. It replaces
+step 1 and step 2 of the switch below, and it is idempotent, so a half-finished
+run is fixed by running it again:
+
+- The product id is derived from the plan code — `stoc_meo_premium_1y`. Stripe
+  lets a product id be chosen, so a second run retrieves rather than creates.
+  Matching on name would not work: names are not unique, and product *search*
+  lags about a minute behind a create, so a re-run inside that minute would
+  make a second one.
+- The price carries the plan code as its `lookup_key`, which is unique per
+  account, so a second run finds the price rather than minting a rival.
+
+`--mode` is required and is checked against `STRIPE_SECRET` before anything is
+sent, because a price created in the wrong mode is not an error Stripe reports.
+`--dry-run` prints what would be sent and touches neither Stripe nor the
+database. `--only=<code>` narrows the run.
+
+A price is immutable in Stripe. If one already exists under a plan's lookup key
+for a different amount, the command reports `MISMATCH`, writes nothing and exits
+non-zero — changing an amount means retiring that price and minting another,
+which is a decision for a person and not for a re-run.
 
 ## The order of the switch
 
 `php artisan stripe:go-live` prints this whole section filled in from the
-database — the seven `stripe prices create` commands with the real names and
+database — the `stripe prices create` commands with the real names and
 amounts, the `UPDATE` statements, the organizations still carrying a test
 customer id, and the webhook command with the six events. Re-run it with
 `--price=<code>=price_…` to have the UPDATEs filled in. It reads and prints
@@ -25,15 +87,19 @@ customers, subscriptions, webhook endpoints — exists in it. Do these in order,
 and do them in one sitting; between steps 2 and 4 the application cannot take a
 payment.
 
-1. **In the live dashboard, create the seven products and prices.** Currency
-   JPY, recurring monthly, matching the test-mode ones. Collect the new
-   `price_…` ids against plan names: MEO FREE / LIGHT / STANDARD / PREMIUM and
-   IG LIGHT / STANDARD / PREMIUM.
-2. **Re-point `plans.stripe_price_id`** at the live ids. Match on `name`, never
-   on `id` — the plan ids are this application's, and reusing them as a
-   shortcut is how the wrong price gets attached to a plan:
+1. **Create the live products and prices.** `php artisan stripe:create-products
+   --mode=live`, once `STRIPE_SECRET` is the live key. Currency JPY, yearly or
+   one-time as the plan says.
+2. **Re-point `plans.stripe_price_id`** at the live ids. The command in step 1
+   does this itself. By hand, match on `name`, never on `id` — the plan ids are
+   this application's, and reusing them as a shortcut is how the wrong price
+   gets attached to a plan:
 
-       Plan::where('name', 'MEO LIGHT')->update(['stripe_price_id' => 'price_…']);
+       Plan::where('name', 'MEO PREMIUM 1年')->update(['stripe_price_id' => 'price_…']);
+
+   Note that step 1 needs the live key and step 4 is where the key is swapped.
+   Swap the key first and run step 1 against it, or accept that nothing can be
+   sold until both are done — which is true of this whole switch anyway.
 
 3. **Clear the test-mode billing links.** One organization carries a test
    `stripe_id`, with one subscription and one subscription item behind it.
@@ -89,9 +155,9 @@ are all checkable in a minute and each one silently breaks live billing.
 - **`PlanSeeder` does not carry `stripe_price_id`.** The column is never
   written by the seeder — that is deliberate, and it is what makes a reseed
   safe after the prices are re-pointed. Editing the seeder and running
-  `db:seed` changes nothing. The ids live in the `plans` table and are changed
-  by `UPDATE ... WHERE name = ...`; `php artisan stripe:go-live` prints the
-  statements.
+  `db:seed` changes nothing. The ids live in the `plans` table and are written
+  by `stripe:create-products`, or by `UPDATE ... WHERE name = ...`;
+  `php artisan stripe:go-live` prints the statements.
 - **The event is `invoice.paid`, not `invoice.payment_succeeded`.** Cashier's
   parent handles the latter, so subscribing to it looks like it works — the
   subscriptions table keeps up, and the organization-level status and `plan_id`

@@ -30,13 +30,36 @@ class PlanCatalogueTest extends TestCase
 
     public function test_the_seeder_creates_the_meo_and_instagram_catalogue(): void
     {
-        $this->assertSame(
-            ['meo_free', 'meo_light', 'meo_standard', 'meo_premium', 'ig_light', 'ig_standard', 'ig_premium'],
-            Plan::orderBy('sort_order')->pluck('code')->all(),
-        );
+        $this->assertSame([
+            'meo_free', 'meo_light', 'meo_standard', 'meo_premium',
+            'ig_light', 'ig_standard', 'ig_premium',
+            'meo_premium_1y', 'meo_premium_2y', 'meo_premium_3y', 'meo_premium_5y', 'meo_premium_6m',
+            'ig_line_1y', 'ig_line_2y', 'ig_line_3y', 'ig_line_5y',
+        ], Plan::orderBy('sort_order')->pluck('code')->all());
 
-        $this->assertSame(4, Plan::product(Plan::PRODUCT_MEO)->count());
-        $this->assertSame(3, Plan::product(Plan::PRODUCT_INSTAGRAM)->count());
+        $this->assertSame(9, Plan::product(Plan::PRODUCT_MEO)->count());
+        $this->assertSame(7, Plan::product(Plan::PRODUCT_INSTAGRAM)->count());
+    }
+
+    public function test_what_is_on_sale_is_the_free_tier_and_the_nine_contract_terms(): void
+    {
+        $this->assertSame([
+            'meo_free',
+            'meo_premium_1y', 'meo_premium_2y', 'meo_premium_3y', 'meo_premium_5y', 'meo_premium_6m',
+            'ig_line_1y', 'ig_line_2y', 'ig_line_3y', 'ig_line_5y',
+        ], Plan::active()
+            ->whereNotIn('code', ['meo_premium', 'ig_premium'])
+            ->orderBy('sort_order')
+            ->pluck('code')
+            ->all());
+
+        // Retiring a plan is marking it inactive, not deleting it: an
+        // organization still on one needs its entitlements to keep resolving,
+        // and BillingController refuses a checkout for an inactive plan.
+        $this->assertSame(
+            ['meo_light', 'meo_standard', 'ig_light', 'ig_standard'],
+            Plan::where('is_active', false)->orderBy('sort_order')->pluck('code')->all(),
+        );
     }
 
     public function test_prices_match_the_design_document(): void
@@ -49,7 +72,85 @@ class PlanCatalogueTest extends TestCase
             'ig_light' => 5000,
             'ig_standard' => 9000,
             'ig_premium' => 15000,
+            // The amount of one charge, not a monthly figure: ¥384,000 a year
+            // on the one-year term, ¥210,000 once on the 6-month special.
+            'meo_premium_1y' => 384000,
+            'meo_premium_2y' => 324000,
+            'meo_premium_3y' => 300000,
+            'meo_premium_5y' => 252000,
+            'meo_premium_6m' => 210000,
+            'ig_line_1y' => 180000,
+            'ig_line_2y' => 156000,
+            'ig_line_3y' => 132000,
+            'ig_line_5y' => 108000,
         ], Plan::orderBy('sort_order')->pluck('price', 'code')->all());
+    }
+
+    public function test_each_term_carries_its_commitment_and_its_number_of_charges(): void
+    {
+        $terms = Plan::whereIn('code', [
+            'meo_premium_1y', 'meo_premium_2y', 'meo_premium_3y', 'meo_premium_5y', 'meo_premium_6m',
+            'ig_line_1y', 'ig_line_2y', 'ig_line_3y', 'ig_line_5y',
+        ])->orderBy('sort_order')->get();
+
+        $this->assertSame([
+            'meo_premium_1y' => ['year', 12, 1],
+            'meo_premium_2y' => ['year', 24, 2],
+            'meo_premium_3y' => ['year', 36, 3],
+            'meo_premium_5y' => ['year', 60, 5],
+            // Charged once, so nothing renews it and its term is carried by
+            // billing_period_months alone.
+            'meo_premium_6m' => ['one_time', 6, 1],
+            'ig_line_1y' => ['year', 12, 1],
+            'ig_line_2y' => ['year', 24, 2],
+            'ig_line_3y' => ['year', 36, 3],
+            'ig_line_5y' => ['year', 60, 5],
+        ], $terms->mapWithKeys(fn (Plan $plan) => [
+            $plan->code => [$plan->interval, $plan->billing_period_months, $plan->phases],
+        ])->all());
+
+        $this->assertSame(
+            ['meo_premium_6m'],
+            $terms->reject->isRecurring()->pluck('code')->values()->all(),
+        );
+    }
+
+    public function test_the_monthly_equivalent_is_written_into_each_terms_description(): void
+    {
+        // The figure a shop owner compares terms on, and the one most easily
+        // mis-divided out of a yearly price.
+        $this->assertStringContainsString('月額換算 ¥27,000', (string) Plan::where('code', 'meo_premium_2y')->value('description'));
+        $this->assertStringContainsString('月額換算 ¥35,000', (string) Plan::where('code', 'meo_premium_6m')->value('description'));
+        $this->assertStringContainsString('月額換算 ¥9,000', (string) Plan::where('code', 'ig_line_5y')->value('description'));
+    }
+
+    public function test_every_meo_premium_term_unlocks_what_meo_premium_unlocks(): void
+    {
+        $premium = $this->resolver->features($this->organizationOn('meo_premium'))->sortKeys()->all();
+
+        foreach (['meo_premium_1y', 'meo_premium_2y', 'meo_premium_3y', 'meo_premium_5y', 'meo_premium_6m'] as $code) {
+            $this->assertSame($premium, $this->resolver->features($this->organizationOn($code))->sortKeys()->all(), $code);
+        }
+    }
+
+    public function test_every_ig_line_term_unlocks_what_the_instagram_tier_unlocks(): void
+    {
+        $premium = $this->resolver->features($this->organizationOn('ig_premium'))->sortKeys()->all();
+
+        foreach (['ig_line_1y', 'ig_line_2y', 'ig_line_3y', 'ig_line_5y'] as $code) {
+            $this->assertSame($premium, $this->resolver->features($this->organizationOn($code))->sortKeys()->all(), $code);
+        }
+    }
+
+    public function test_the_seeder_leaves_the_stripe_price_ids_alone(): void
+    {
+        // The ids are written by stripe:create-products and live only in the
+        // plans table, which is what makes a reseed safe after a price change.
+        Plan::where('code', 'meo_premium_1y')->update(['stripe_price_id' => 'price_1Live001']);
+
+        $this->seed(PlanSeeder::class);
+
+        $this->assertSame('price_1Live001', Plan::where('code', 'meo_premium_1y')->value('stripe_price_id'));
     }
 
     public function test_no_plan_offers_a_trial(): void
@@ -63,7 +164,7 @@ class PlanCatalogueTest extends TestCase
 
         $this->seed(PlanSeeder::class);
 
-        $this->assertSame(7, Plan::count());
+        $this->assertSame(16, Plan::count());
         $this->assertSame($features, PlanFeature::count());
     }
 

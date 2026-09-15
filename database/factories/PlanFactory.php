@@ -28,11 +28,39 @@ class PlanFactory extends Factory
             'tier' => $tier,
             'price' => fake()->randomElement([9800, 29800, 79800]),
             'currency' => 'JPY',
-            'interval' => 'month',
+            'interval' => Plan::INTERVAL_MONTH,
+            'billing_period_months' => 1,
+            'phases' => 1,
             'trial_days' => 14,
             'sort_order' => fake()->numberBetween(1, 100),
             'is_active' => true,
         ];
+    }
+
+    /**
+     * A plan sold on a multi-year term: billed once a year, for as many years
+     * as the commitment runs. `price` is the yearly charge, not the total.
+     */
+    public function term(int $years): static
+    {
+        return $this->state(fn () => [
+            'interval' => Plan::INTERVAL_YEAR,
+            'billing_period_months' => $years * 12,
+            'phases' => $years,
+        ]);
+    }
+
+    /**
+     * A plan bought outright for a fixed term, with no Stripe recurring price
+     * behind it. The 6-month MEO PREMIUM special is the only one.
+     */
+    public function oneTime(int $months): static
+    {
+        return $this->state(fn () => [
+            'interval' => Plan::INTERVAL_ONE_TIME,
+            'billing_period_months' => $months,
+            'phases' => 1,
+        ]);
     }
 
     /**

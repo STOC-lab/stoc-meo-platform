@@ -9,12 +9,24 @@ use App\Services\FeatureResolver;
 use Illuminate\Database\Seeder;
 
 /**
- * The plan catalogue: four MEO tiers and three Instagram tiers, with the
- * prices and allowances defined by STOC MEO SYSTEM DESIGN v1.3 §27-29.
+ * The plan catalogue.
  *
- * Prices are monthly and in JPY, and no plan offers a trial. stripe_price_id
- * is left null until the matching price exists in Stripe; fill it in before
- * allowing checkout.
+ * What is sold today is MEO FREE, MEO PREMIUM on a one-, two-, three- or
+ * five-year term plus a 6-month special, and IG LINE on the same four terms.
+ * The monthly LIGHT and STANDARD tiers of both products are kept as rows but
+ * marked inactive: organizations still sitting on one need their entitlements
+ * to keep resolving, and BillingController refuses a checkout for an inactive
+ * plan, which is what retiring a plan means here.
+ *
+ * `price` is the amount of one charge in JPY, not a monthly figure: ¥384,000
+ * billed yearly, ¥210,000 charged once. The month the customer is committed
+ * for is `billing_period_months`, and `phases` is how many charges make that
+ * up — the number of Subscription Schedule phases the multi-year terms need.
+ * No plan offers a trial.
+ *
+ * stripe_price_id is deliberately absent from every definition below. The ids
+ * live in the plans table and are written by `stripe:create-products`, so a
+ * reseed after a price change cannot undo it. See `.ai/rules/stripe.md`.
  *
  * Re-running this seeder updates existing plans in place and drops features no
  * longer listed.
@@ -29,6 +41,27 @@ class PlanSeeder extends Seeder
         Plan::TIER_LIGHT,
         Plan::TIER_STANDARD,
         Plan::TIER_PREMIUM,
+    ];
+
+    /**
+     * The terms MEO PREMIUM and IG LINE are sold on, keyed by the suffix their
+     * plan codes carry.
+     *
+     * `meo` and `ig_line` are the amount of one charge: the yearly price on a
+     * yearly term, the whole thing on the 6-month special, which is charged
+     * once and so has no IG LINE counterpart. `phases` is the number of yearly
+     * charges the commitment is made of, which is what a Subscription Schedule
+     * is built from — a two-year term is two phases at ¥324,000, not one
+     * charge of ¥648,000.
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    protected const TERMS = [
+        '1y' => ['label' => '1年', 'months' => 12, 'phases' => 1, 'interval' => Plan::INTERVAL_YEAR, 'meo' => 384000, 'ig_line' => 180000, 'sort' => 10],
+        '2y' => ['label' => '2年', 'months' => 24, 'phases' => 2, 'interval' => Plan::INTERVAL_YEAR, 'meo' => 324000, 'ig_line' => 156000, 'sort' => 20],
+        '3y' => ['label' => '3年', 'months' => 36, 'phases' => 3, 'interval' => Plan::INTERVAL_YEAR, 'meo' => 300000, 'ig_line' => 132000, 'sort' => 30],
+        '5y' => ['label' => '5年', 'months' => 60, 'phases' => 5, 'interval' => Plan::INTERVAL_YEAR, 'meo' => 252000, 'ig_line' => 108000, 'sort' => 40],
+        '6m' => ['label' => '6ヶ月特例', 'months' => 6, 'phases' => 1, 'interval' => Plan::INTERVAL_ONE_TIME, 'meo' => 210000, 'ig_line' => null, 'sort' => 50],
     ];
 
     /**
@@ -99,6 +132,7 @@ class PlanSeeder extends Seeder
                 'price' => 0,
                 'trial_days' => 0,
                 'sort_order' => 10,
+                'is_active' => true,
                 'features' => $this->meoFeatures(Plan::TIER_FREE),
             ],
             [
@@ -110,6 +144,7 @@ class PlanSeeder extends Seeder
                 'price' => 9000,
                 'trial_days' => 0,
                 'sort_order' => 20,
+                'is_active' => false,
                 'features' => $this->meoFeatures(Plan::TIER_LIGHT),
             ],
             [
@@ -121,6 +156,7 @@ class PlanSeeder extends Seeder
                 'price' => 15000,
                 'trial_days' => 0,
                 'sort_order' => 30,
+                'is_active' => false,
                 'features' => $this->meoFeatures(Plan::TIER_STANDARD),
             ],
             [
@@ -132,6 +168,7 @@ class PlanSeeder extends Seeder
                 'price' => 30000,
                 'trial_days' => 0,
                 'sort_order' => 40,
+                'is_active' => true,
                 'features' => $this->meoFeatures(Plan::TIER_PREMIUM),
             ],
             [
@@ -143,6 +180,7 @@ class PlanSeeder extends Seeder
                 'price' => 5000,
                 'trial_days' => 0,
                 'sort_order' => 50,
+                'is_active' => false,
                 'features' => [
                     Feature::InstagramEnabled->value => true,
                     Feature::InstagramPostMonthlyLimit->value => 4,
@@ -160,6 +198,7 @@ class PlanSeeder extends Seeder
                 'price' => 9000,
                 'trial_days' => 0,
                 'sort_order' => 60,
+                'is_active' => false,
                 'features' => [
                     Feature::InstagramEnabled->value => true,
                     Feature::InstagramPostMonthlyLimit->value => 12,
@@ -177,15 +216,101 @@ class PlanSeeder extends Seeder
                 'price' => 15000,
                 'trial_days' => 0,
                 'sort_order' => 70,
-                'features' => [
-                    Feature::InstagramEnabled->value => true,
-                    Feature::InstagramPostMonthlyLimit->value => 30,
-                    Feature::LocationLimit->value => 1,
-                    Feature::BrandLimit->value => 1,
-                    Feature::MemberLimit->value => 3,
-                    Feature::InstagramAutoPublishEnabled->value => true,
-                ],
+                'is_active' => true,
+                'features' => $this->instagramFeatures(),
             ],
+            ...$this->termPlans(),
+        ];
+    }
+
+    /**
+     * The annual catalogue: MEO PREMIUM and IG LINE, each on the terms they
+     * are sold on.
+     *
+     * Every MEO PREMIUM term unlocks exactly what MEO PREMIUM unlocks and
+     * every IG LINE term exactly what the Instagram tier unlocks — the term
+     * buys the same product for longer at a lower rate per month, and nothing
+     * about the entitlements changes with it. Giving the terms their own
+     * feature values would be nine places for one matrix to drift.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    protected function termPlans(): array
+    {
+        return collect(self::TERMS)
+            ->flatMap(fn (array $term, string $suffix) => [
+                [
+                    'code' => 'meo_premium_'.$suffix,
+                    'name' => 'MEO PREMIUM '.$term['label'],
+                    'product' => Plan::PRODUCT_MEO,
+                    'tier' => Plan::TIER_PREMIUM,
+                    'description' => $this->termDescription('MEO PREMIUM', $term, $term['meo']),
+                    'price' => $term['meo'],
+                    'interval' => $term['interval'],
+                    'billing_period_months' => $term['months'],
+                    'phases' => $term['phases'],
+                    'trial_days' => 0,
+                    'sort_order' => $term['sort'] + 100,
+                    'is_active' => true,
+                    'features' => $this->meoFeatures(Plan::TIER_PREMIUM),
+                ],
+                ...$term['ig_line'] === null ? [] : [[
+                    'code' => 'ig_line_'.$suffix,
+                    'name' => 'IG LINE '.$term['label'],
+                    'product' => Plan::PRODUCT_INSTAGRAM,
+                    'tier' => Plan::TIER_PREMIUM,
+                    'description' => $this->termDescription('IG LINE', $term, $term['ig_line']),
+                    'price' => $term['ig_line'],
+                    'interval' => $term['interval'],
+                    'billing_period_months' => $term['months'],
+                    'phases' => $term['phases'],
+                    'trial_days' => 0,
+                    'sort_order' => $term['sort'] + 200,
+                    'is_active' => true,
+                    'features' => $this->instagramFeatures(),
+                ]],
+            ])
+            ->all();
+    }
+
+    /**
+     * The monthly equivalent is what a shop owner compares terms on, so it is
+     * said out loud rather than left to be divided out of the yearly figure.
+     *
+     * @param  array<string, mixed>  $term
+     */
+    protected function termDescription(string $product, array $term, int $price): string
+    {
+        $monthly = intdiv($price, $term['interval'] === Plan::INTERVAL_YEAR ? 12 : $term['months']);
+
+        return sprintf(
+            '%s %s契約。%s（月額換算 ¥%s）。',
+            $product,
+            $term['label'],
+            $term['interval'] === Plan::INTERVAL_ONE_TIME
+                ? '¥'.number_format($price).' 一括'
+                : '年額 ¥'.number_format($price),
+            number_format($monthly),
+        );
+    }
+
+    /**
+     * The Instagram feature set, shared by IG PREMIUM and every IG LINE term.
+     *
+     * LINE is in the name and not in the features: there is no LINE key in the
+     * Feature enum and nothing in the application gates on one yet.
+     *
+     * @return array<string, int|bool|null>
+     */
+    protected function instagramFeatures(): array
+    {
+        return [
+            Feature::InstagramEnabled->value => true,
+            Feature::InstagramPostMonthlyLimit->value => 30,
+            Feature::InstagramAutoPublishEnabled->value => true,
+            Feature::LocationLimit->value => 1,
+            Feature::BrandLimit->value => 1,
+            Feature::MemberLimit->value => 3,
         ];
     }
 
