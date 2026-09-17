@@ -19,13 +19,15 @@ use Stripe\StripeClient;
  * instead. Everything it does is idempotent, so a half-finished run is fixed
  * by running it again:
  *
- * - The product id is derived from the plan code (`stoc_meo_premium_1y`), so
- *   a second run retrieves the product it made the first time rather than
- *   making another one with the same name. Stripe lets a product id be chosen;
- *   searching by name would not, because names are not unique and the search
- *   index lags a minute behind a create.
- * - The price carries the plan code as its lookup key, which *is* unique per
- *   account, so a second run finds the price rather than minting a rival.
+ * - Every plan is a price on one product, `stoc_meo_service`. The catalogue is
+ *   one service sold on different terms, not nine services, so the terms are
+ *   what a price says and the product says what is being bought. The id is
+ *   fixed rather than searched for: Stripe lets a product id be chosen, while
+ *   product search lags about a minute behind a create, so a re-run inside
+ *   that minute would make a second one.
+ * - The price carries the plan code as its lookup key, which is unique per
+ *   account, so a second run finds the price rather than minting a rival, and
+ *   its nickname and metadata are what name the term in the dashboard.
  *
  * A price in Stripe is immutable. If one already exists under a plan's lookup
  * key for a different amount, that is the catalogue having moved under a price
@@ -46,10 +48,19 @@ class CreateStripeProducts extends Command
     protected $description = 'Create the Stripe product and price for every active paid plan and record the price ids';
 
     /**
-     * Every product this command makes is named from the plan code, so the
-     * dashboard reads as the catalogue does and a re-run is a retrieve.
+     * The one product every plan's price hangs off, with an id this command
+     * chooses so that a second run retrieves it rather than making a rival.
      */
-    public const PRODUCT_ID_PREFIX = 'stoc_';
+    public const PRODUCT_ID = 'stoc_meo_service';
+
+    public const PRODUCT_NAME = 'STOC MEO Service';
+
+    public const PRODUCT_DESCRIPTION = 'STOC MEO / IG LINE の契約プラン。契約期間ごとの料金は価格側が持つ。';
+
+    /**
+     * Retrieved or created once per run, not once per plan.
+     */
+    protected ?Product $product = null;
 
     public function handle(): int
     {
@@ -168,28 +179,26 @@ class CreateStripeProducts extends Command
      */
     protected function syncPlan(Plan $plan): array
     {
-        $productId = self::PRODUCT_ID_PREFIX.$plan->code;
-
         if ($this->option('dry-run')) {
             $this->line(sprintf(
                 '  %s — %s ¥%s %s',
                 $plan->code,
-                $productId,
+                self::PRODUCT_ID,
                 number_format((int) $plan->price),
                 $plan->isRecurring() ? "every 1 {$plan->interval}" : 'once',
             ));
 
-            return [$plan->code, $productId, '—', 'DRY RUN'];
+            return [$plan->code, self::PRODUCT_ID, '—', 'DRY RUN'];
         }
 
-        $product = $this->product($productId, $plan);
+        $product = $this->product();
         $existing = $this->existingPrice($plan);
 
         if ($existing !== null && ! $this->priceMatches($existing, $plan)) {
             return [$plan->code, $product->id, $existing->id, 'MISMATCH'];
         }
 
-        $price = $existing ?? $this->createPrice($productId, $plan);
+        $price = $existing ?? $this->createPrice($product->id, $plan);
 
         $replaced = filled($plan->stripe_price_id) && $plan->stripe_price_id !== $price->id;
 
@@ -208,23 +217,27 @@ class CreateStripeProducts extends Command
     }
 
     /**
-     * The plan's product, retrieved if this command has made it before.
+     * The one product the whole catalogue hangs off, retrieved if this command
+     * has made it before and made once per run either way.
      */
-    protected function product(string $productId, Plan $plan): Product
+    protected function product(): Product
     {
+        if ($this->product !== null) {
+            return $this->product;
+        }
+
         try {
-            return $this->stripe()->products->retrieve($productId);
+            return $this->product = $this->stripe()->products->retrieve(self::PRODUCT_ID);
         } catch (InvalidRequestException $e) {
             if ($e->getHttpStatus() !== 404) {
                 throw $e;
             }
         }
 
-        return $this->stripe()->products->create([
-            'id' => $productId,
-            'name' => $plan->name,
-            'description' => $plan->description,
-            'metadata' => $this->metadata($plan),
+        return $this->product = $this->stripe()->products->create([
+            'id' => self::PRODUCT_ID,
+            'name' => self::PRODUCT_NAME,
+            'description' => self::PRODUCT_DESCRIPTION,
         ]);
     }
 

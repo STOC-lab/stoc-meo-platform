@@ -178,15 +178,19 @@ class PrepareStripeGoLive extends Command
         $this->line('stripe login --live');
         $this->newLine();
 
+        $this->line('# One product for the catalogue; every plan below is a price on it.');
+        $this->line('stripe products create --live \\');
+        $this->line('  --id='.CreateStripeProducts::PRODUCT_ID.' \\');
+        $this->line('  --name='.escapeshellarg(CreateStripeProducts::PRODUCT_NAME).' \\');
+        $this->line('  --description='.escapeshellarg(CreateStripeProducts::PRODUCT_DESCRIPTION));
+        $this->newLine();
+
         foreach ($plans as $plan) {
             $this->line("# {$plan->name} — ".$this->priceSummary($plan));
-            $this->line('stripe products create --live \\');
-            $this->line('  --name='.escapeshellarg((string) $plan->name).' \\');
-            $this->line('  --description='.escapeshellarg((string) $plan->description).' \\');
-            $this->line("  --metadata[plan_code]={$plan->code}");
-            $this->newLine();
             $this->line('stripe prices create --live \\');
-            $this->line('  --product=prod_REPLACE_WITH_THE_ID_ABOVE \\');
+            $this->line('  --product='.CreateStripeProducts::PRODUCT_ID.' \\');
+            $this->line('  --nickname='.escapeshellarg((string) $plan->name).' \\');
+            $this->line("  --metadata[plan_code]={$plan->code} \\");
             $this->line('  --unit-amount='.(int) $plan->price.' \\');
             $this->line('  --currency='.strtolower((string) $plan->currency).' \\');
 
@@ -200,6 +204,11 @@ class PrepareStripeGoLive extends Command
             $this->line("  --lookup-key={$plan->code}");
             $this->newLine();
         }
+
+        $this->comment('The plans differ by term and by amount, not by what is being sold, so');
+        $this->comment('they are prices on one product rather than nine products. The term is');
+        $this->comment('what the nickname, the lookup key and the metadata on each price say.');
+        $this->newLine();
 
         $this->comment('The lookup key on each price is worth the keystrokes: it is how you find');
         $this->comment('the right price again without reading ids, and it is unique per mode, so');

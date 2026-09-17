@@ -2,9 +2,11 @@
 
 ## The keys are test keys, and most of the catalogue has no price at all
 
-`.env` carries `sk_test_…` / `pk_test_…`. The seven monthly rows in `plans` hold
-`stripe_price_id` values minted under that test account; the nine contract terms
-added on 2026-09-15 hold none. **A test price id does not resolve in live mode.**
+`.env` carries `sk_test_…` / `pk_test_…`. Every row in `plans` that is sold now
+holds a `stripe_price_id` minted under that test account: the seven monthly ones
+from before, and the nine contract terms since 2026-09-17, when
+`stripe:create-products --mode=test` made their prices under the
+`stoc_meo_service` product. **A test price id does not resolve in live mode.**
 Swapping only the keys leaves every plan pointing at a price Stripe will answer
 `No such price` for, and `BillingService::checkoutUrl()` fails on the first
 checkout anyone attempts.
@@ -59,11 +61,14 @@ every active paid plan and writes the price id onto the plan row. It replaces
 step 1 and step 2 of the switch below, and it is idempotent, so a half-finished
 run is fixed by running it again:
 
-- The product id is derived from the plan code — `stoc_meo_premium_1y`. Stripe
-  lets a product id be chosen, so a second run retrieves rather than creates.
-  Matching on name would not work: names are not unique, and product *search*
-  lags about a minute behind a create, so a re-run inside that minute would
-  make a second one.
+- Every plan is a price on **one** product, `stoc_meo_service` / "STOC MEO
+  Service". The catalogue is one service sold on different terms, not nine
+  services, so the term lives on the price — its nickname, its lookup key and
+  its `plan_code` metadata — and the product says only what is being bought.
+  The id is fixed rather than searched for: Stripe lets a product id be chosen,
+  so a second run retrieves rather than creates, while matching on name would
+  not work — names are not unique, and product *search* lags about a minute
+  behind a create, so a re-run inside that minute would make a second one.
 - The price carries the plan code as its `lookup_key`, which is unique per
   account, so a second run finds the price rather than minting a rival.
 
@@ -92,9 +97,10 @@ customers, subscriptions, webhook endpoints — exists in it. Do these in order,
 and do them in one sitting; between steps 2 and 4 the application cannot take a
 payment.
 
-1. **Create the live products and prices.** `php artisan stripe:create-products
-   --mode=live`, once `STRIPE_SECRET` is the live key. Currency JPY, yearly or
-   one-time as the plan says.
+1. **Create the live product and prices.** `php artisan stripe:create-products
+   --mode=live`, once `STRIPE_SECRET` is the live key. One `stoc_meo_service`
+   product, one price per plan under it. Currency JPY, yearly or one-time as
+   the plan says.
 2. **Re-point `plans.stripe_price_id`** at the live ids. The command in step 1
    does this itself. By hand, match on `name`, never on `id` — the plan ids are
    this application's, and reusing them as a shortcut is how the wrong price

@@ -80,7 +80,7 @@ class CreateStripeProductsTest extends TestCase
     {
         $plan = $this->yearlyPlan();
 
-        $this->stripe->push('POST', '/v1/products', ['id' => 'stoc_meo_premium_3y', 'object' => 'product']);
+        $this->stripe->push('POST', '/v1/products', ['id' => 'stoc_meo_service', 'object' => 'product']);
         $this->stripe->push('GET', '/v1/prices', $this->priceList([]));
         $this->stripe->push('POST', '/v1/prices', $this->stripePrice());
 
@@ -89,20 +89,63 @@ class CreateStripeProductsTest extends TestCase
         $this->assertSame('price_1Live003', $plan->fresh()->stripe_price_id);
 
         $product = $this->stripe->paramsFor('post', '/v1/products');
-        $this->assertSame('stoc_meo_premium_3y', $product['id']);
-        $this->assertSame('MEO PREMIUM 3年', $product['name']);
-        $this->assertSame(
-            ['plan_code' => 'meo_premium_3y', 'billing_period_months' => '36', 'phases' => '3'],
-            $product['metadata'],
-        );
+        $this->assertSame('stoc_meo_service', $product['id']);
+        $this->assertSame('STOC MEO Service', $product['name']);
 
         $price = $this->stripe->paramsFor('post', '/v1/prices');
-        $this->assertSame('stoc_meo_premium_3y', $price['product']);
+        // The term is the price, not the product: the plan is named and
+        // described on the price, which is what the webhook and the dashboard
+        // read back.
+        $this->assertSame('stoc_meo_service', $price['product']);
+        $this->assertSame('MEO PREMIUM 3年', $price['nickname']);
+        $this->assertSame(
+            ['plan_code' => 'meo_premium_3y', 'billing_period_months' => '36', 'phases' => '3'],
+            $price['metadata'],
+        );
         // JPY is zero-decimal: 300000 is ¥300,000, not ¥3,000.
         $this->assertSame(300000, $price['unit_amount']);
         $this->assertSame('jpy', $price['currency']);
         $this->assertSame('meo_premium_3y', $price['lookup_key']);
         $this->assertSame(['interval' => 'year', 'interval_count' => 1], $price['recurring']);
+    }
+
+    public function test_every_plan_hangs_off_one_product(): void
+    {
+        $yearly = $this->yearlyPlan();
+        $yearly->forceFill(['sort_order' => 1])->save();
+
+        // The run goes in sort_order, and which price is written to which plan
+        // is the whole point of the assertions below.
+        $sixMonths = Plan::factory()->oneTime(6)->create([
+            'code' => 'meo_premium_6m',
+            'name' => 'MEO PREMIUM 6ヶ月特例',
+            'price' => 210000,
+            'currency' => 'JPY',
+            'sort_order' => 2,
+            'stripe_price_id' => null,
+        ]);
+
+        $this->stripe->push('POST', '/v1/products', ['id' => 'stoc_meo_service', 'object' => 'product']);
+        $this->stripe->push('GET', '/v1/prices', $this->priceList([]));
+        $this->stripe->push('POST', '/v1/prices', $this->stripePrice());
+        $this->stripe->push('GET', '/v1/prices', $this->priceList([]));
+        $this->stripe->push('POST', '/v1/prices', $this->stripePrice([
+            'id' => 'price_1Live005',
+            'unit_amount' => 210000,
+            'lookup_key' => 'meo_premium_6m',
+            'recurring' => null,
+        ]));
+
+        $this->artisan('stripe:create-products', ['--mode' => 'test'])->assertSuccessful();
+
+        // Two plans, two prices, one product — and the product is asked for
+        // once, not once per plan.
+        $this->assertSame(1, $this->stripe->countFor('post', '/v1/products'));
+        $this->assertSame(2, $this->stripe->countFor('post', '/v1/prices'));
+        $this->assertSame('stoc_meo_service', $this->stripe->paramsFor('post', '/v1/prices', 0)['product']);
+        $this->assertSame('stoc_meo_service', $this->stripe->paramsFor('post', '/v1/prices', 1)['product']);
+        $this->assertSame('price_1Live003', $yearly->fresh()->stripe_price_id);
+        $this->assertSame('price_1Live005', $sixMonths->fresh()->stripe_price_id);
     }
 
     public function test_a_one_time_plan_gets_a_price_with_no_recurring_block(): void
@@ -115,7 +158,7 @@ class CreateStripeProductsTest extends TestCase
             'stripe_price_id' => null,
         ]);
 
-        $this->stripe->push('POST', '/v1/products', ['id' => 'stoc_meo_premium_6m', 'object' => 'product']);
+        $this->stripe->push('POST', '/v1/products', ['id' => 'stoc_meo_service', 'object' => 'product']);
         $this->stripe->push('GET', '/v1/prices', $this->priceList([]));
         $this->stripe->push('POST', '/v1/prices', $this->stripePrice([
             'id' => 'price_1Live005',
@@ -138,7 +181,7 @@ class CreateStripeProductsTest extends TestCase
         $plan = $this->yearlyPlan();
         $plan->forceFill(['stripe_price_id' => 'price_1Live003'])->save();
 
-        $this->stripe->push('GET', '/v1/products/stoc_meo_premium_3y', ['id' => 'stoc_meo_premium_3y', 'object' => 'product']);
+        $this->stripe->push('GET', '/v1/products/stoc_meo_service', ['id' => 'stoc_meo_service', 'object' => 'product']);
         $this->stripe->push('GET', '/v1/prices', $this->priceList([$this->stripePrice()]));
 
         $this->artisan('stripe:create-products', ['--mode' => 'test'])
@@ -154,7 +197,7 @@ class CreateStripeProductsTest extends TestCase
     {
         $plan = $this->yearlyPlan();
 
-        $this->stripe->push('POST', '/v1/products', ['id' => 'stoc_meo_premium_3y', 'object' => 'product']);
+        $this->stripe->push('POST', '/v1/products', ['id' => 'stoc_meo_service', 'object' => 'product']);
         $this->stripe->push('GET', '/v1/prices', $this->priceList([$this->stripePrice(['unit_amount' => 324000])]));
 
         $this->artisan('stripe:create-products', ['--mode' => 'test'])
@@ -195,7 +238,7 @@ class CreateStripeProductsTest extends TestCase
         $retired = Plan::factory()->create(['code' => 'meo_light', 'price' => 9000, 'is_active' => false, 'stripe_price_id' => null]);
         $this->yearlyPlan();
 
-        $this->stripe->push('POST', '/v1/products', ['id' => 'stoc_meo_premium_3y', 'object' => 'product']);
+        $this->stripe->push('POST', '/v1/products', ['id' => 'stoc_meo_service', 'object' => 'product']);
         $this->stripe->push('GET', '/v1/prices', $this->priceList([]));
         $this->stripe->push('POST', '/v1/prices', $this->stripePrice());
 
@@ -211,7 +254,7 @@ class CreateStripeProductsTest extends TestCase
         $plan = $this->yearlyPlan();
 
         $this->artisan('stripe:create-products', ['--mode' => 'test', '--dry-run' => true])
-            ->expectsOutputToContain('stoc_meo_premium_3y')
+            ->expectsOutputToContain('stoc_meo_service')
             ->expectsOutputToContain('nothing was sent to Stripe')
             ->assertSuccessful();
 
@@ -224,7 +267,7 @@ class CreateStripeProductsTest extends TestCase
         $this->yearlyPlan();
         $other = Plan::factory()->term(1)->create(['code' => 'ig_line_1y', 'price' => 180000, 'stripe_price_id' => null]);
 
-        $this->stripe->push('POST', '/v1/products', ['id' => 'stoc_meo_premium_3y', 'object' => 'product']);
+        $this->stripe->push('POST', '/v1/products', ['id' => 'stoc_meo_service', 'object' => 'product']);
         $this->stripe->push('GET', '/v1/prices', $this->priceList([]));
         $this->stripe->push('POST', '/v1/prices', $this->stripePrice());
 
