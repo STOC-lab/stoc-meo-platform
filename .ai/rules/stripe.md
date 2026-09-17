@@ -4,9 +4,9 @@
 
 `.env` carries `sk_test_…` / `pk_test_…`. Every row in `plans` that is sold now
 holds a `stripe_price_id` minted under that test account: the seven monthly ones
-from before, and the nine contract terms since 2026-09-17, when
-`stripe:create-products --mode=test` made their prices under the
-`stoc_meo_service` product. **A test price id does not resolve in live mode.**
+from before, and the nine contract terms since 2026-09-17, made by
+`stripe:create-products --mode=test`. **A test price id does not resolve in live
+mode.**
 Swapping only the keys leaves every plan pointing at a price Stripe will answer
 `No such price` for, and `BillingService::checkoutUrl()` fails on the first
 checkout anyone attempts.
@@ -61,14 +61,11 @@ every active paid plan and writes the price id onto the plan row. It replaces
 step 1 and step 2 of the switch below, and it is idempotent, so a half-finished
 run is fixed by running it again:
 
-- Every plan is a price on **one** product, `stoc_meo_service` / "STOC MEO
-  Service". The catalogue is one service sold on different terms, not nine
-  services, so the term lives on the price — its nickname, its lookup key and
-  its `plan_code` metadata — and the product says only what is being bought.
-  The id is fixed rather than searched for: Stripe lets a product id be chosen,
-  so a second run retrieves rather than creates, while matching on name would
-  not work — names are not unique, and product *search* lags about a minute
-  behind a create, so a re-run inside that minute would make a second one.
+- The product id is derived from the plan code — `stoc_meo_premium_1y`. Stripe
+  lets a product id be chosen, so a second run retrieves rather than creates.
+  Matching on name would not work: names are not unique, and product *search*
+  lags about a minute behind a create, so a re-run inside that minute would
+  make a second one.
 - The price carries the plan code as its `lookup_key`, which is unique per
   account, so a second run finds the price rather than minting a rival.
 
@@ -81,6 +78,24 @@ A price is immutable in Stripe. If one already exists under a plan's lookup key
 for a different amount, the command reports `MISMATCH`, writes nothing and exits
 non-zero — changing an amount means retiring that price and minting another,
 which is a decision for a person and not for a re-run.
+
+### One product per plan, because the product is what the customer reads
+
+Checkout shows the customer the **product's** name, and nothing on the price can
+override it: `price_data.product_data` describes an ad-hoc price and Stripe
+refuses it beside an existing `price`, and `nickname` is documented as hidden
+from customers. So a shared product makes every term read as one unnamed service
+on the payment page, the invoice and the customer portal alike — "STOC MEO
+Service, ¥384,000 per year", with nothing saying which term was bought.
+
+This was tried on 2026-09-17: nine prices on one `stoc_meo_service` product, and
+it was undone the same day. Undoing it is not free, which is the other half of
+the lesson — `price.product` is immutable, so the nine prices had to be created
+again under per-plan products, and `plans.stripe_price_id` re-pointed at the new
+ids. The first set is archived, with `_shared_product_retired` appended to each
+lookup key so the codes were free for the replacements. A price's lookup key
+blocks a new price from taking it until it is moved or the price is given
+`transfer_lookup_key`.
 
 ## The order of the switch
 
@@ -97,10 +112,9 @@ customers, subscriptions, webhook endpoints — exists in it. Do these in order,
 and do them in one sitting; between steps 2 and 4 the application cannot take a
 payment.
 
-1. **Create the live product and prices.** `php artisan stripe:create-products
-   --mode=live`, once `STRIPE_SECRET` is the live key. One `stoc_meo_service`
-   product, one price per plan under it. Currency JPY, yearly or one-time as
-   the plan says.
+1. **Create the live products and prices.** `php artisan stripe:create-products
+   --mode=live`, once `STRIPE_SECRET` is the live key. Currency JPY, yearly or
+   one-time as the plan says.
 2. **Re-point `plans.stripe_price_id`** at the live ids. The command in step 1
    does this itself. By hand, match on `name`, never on `id` — the plan ids are
    this application's, and reusing them as a shortcut is how the wrong price

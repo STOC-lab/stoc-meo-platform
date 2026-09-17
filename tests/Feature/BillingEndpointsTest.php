@@ -44,10 +44,13 @@ class BillingEndpointsTest extends TestCase
             $mock->shouldReceive('checkoutUrl')
                 ->once()
                 ->withArgs(function (Organization $organization, Plan $plan, string $success, string $cancel) {
+                    // Both have to be routes the SPA has. Billing is a tab of
+                    // /settings, and a path it does not know answers with the
+                    // not-found page to someone who has just paid.
                     return $organization->is($this->organization)
                         && $plan->is($this->plan)
-                        && str_contains($success, '/billing/complete')
-                        && str_contains($cancel, '/billing/plans');
+                        && $success === config('app.url').'/settings?tab=billing&checkout=success'
+                        && $cancel === config('app.url').'/settings?tab=billing&checkout=cancelled';
                 })
                 ->andReturn('https://checkout.stripe.com/c/pay/cs_test123');
         });

@@ -16,6 +16,18 @@ use Illuminate\Validation\ValidationException;
  */
 class BillingController extends Controller
 {
+    /**
+     * Where Stripe sends the customer back to when Checkout closes.
+     *
+     * It has to be a route the SPA actually has. The front-end paths are the
+     * flat ones in `resources/js/routes.tsx`, and billing is a tab of
+     * `/settings` rather than a page of its own — `/billing/complete` and
+     * `/billing/plans` were neither, so a customer who had just paid landed on
+     * the not-found page. `?tab=` is what opens the tab and `?checkout=` is
+     * what the page says about how it went.
+     */
+    public const RETURN_PATH = '/settings?tab=billing';
+
     public function __construct(
         protected BillingService $billing,
         protected Tenancy $tenancy,
@@ -49,8 +61,8 @@ class BillingController extends Controller
         $url = $this->billing->checkoutUrl(
             $this->tenancy->organization(),
             $plan,
-            $data['success_url'] ?? $this->defaultUrl('/billing/complete'),
-            $data['cancel_url'] ?? $this->defaultUrl('/billing/plans'),
+            $data['success_url'] ?? $this->defaultUrl(self::RETURN_PATH.'&checkout=success'),
+            $data['cancel_url'] ?? $this->defaultUrl(self::RETURN_PATH.'&checkout=cancelled'),
         );
 
         return response()->json(['url' => $url]);

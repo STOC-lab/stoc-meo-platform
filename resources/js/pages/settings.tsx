@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { CreditCard, ExternalLink, Link2, Plus, Store, Users } from 'lucide-react';
 
 import { EmptyState, ErrorState, LoadingState, PageHeader } from '@/components/common/states';
@@ -17,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useToast } from '@/components/ui/toast';
 import { useCurrentLocation, useLocations } from '@/hooks/use-locations';
 import {
     useBrands,
@@ -30,14 +32,60 @@ import { api, errorMessage } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { useCurrentOrganization } from '@/stores/auth';
 
+const TABS = ['locations', 'members', 'connections', 'billing'] as const;
+
+type TabValue = (typeof TABS)[number];
+
 export default function Settings() {
     const organization = useCurrentOrganization();
+    const [params, setParams] = useSearchParams();
+    const { toast } = useToast();
+
+    const requested = params.get('tab');
+    const tab: TabValue = TABS.includes(requested as TabValue) ? (requested as TabValue) : 'locations';
+
+    // Stripe Checkout returns the customer to /settings?tab=billing with how
+    // it went. Say so once, then drop the parameter so a refresh or a shared
+    // link does not repeat it.
+    const checkout = params.get('checkout');
+
+    useEffect(() => {
+        if (checkout === null) {
+            return;
+        }
+
+        if (checkout === 'success') {
+            toast('ご契約ありがとうございます。プランの反映まで数秒かかることがあります。');
+        }
+
+        setParams(
+            (current) => {
+                const next = new URLSearchParams(current);
+                next.delete('checkout');
+
+                return next;
+            },
+            { replace: true },
+        );
+    }, [checkout, setParams, toast]);
+
+    function selectTab(value: string) {
+        setParams(
+            (current) => {
+                const next = new URLSearchParams(current);
+                next.set('tab', value);
+
+                return next;
+            },
+            { replace: true },
+        );
+    }
 
     return (
         <div className="flex flex-col gap-6">
             <PageHeader title="設定" description={organization?.name} />
 
-            <Tabs defaultValue="locations">
+            <Tabs value={tab} onValueChange={selectTab}>
                 <TabsList>
                     <TabsTrigger value="locations">店舗・ブランド</TabsTrigger>
                     <TabsTrigger value="members">メンバー</TabsTrigger>
