@@ -42,6 +42,12 @@ enum Feature: string
     case CitationEnabled = 'citation.enabled';
     case CitationMonthlyLimit = 'citation.monthly_limit';
 
+    // AIO（生成 AI 検索対策）
+    case AioMonitoringEnabled = 'aio.monitoring.enabled';
+    case AioContentSuggestionEnabled = 'aio.content_suggestion.enabled';
+    case AioSchemaDiagnosisEnabled = 'aio.schema_diagnosis.enabled';
+    case AioReportEnabled = 'aio.report.enabled';
+
     // AI 分析
     case AiDailyAnalysisEnabled = 'ai.daily_analysis.enabled';
     case AiWeeklyAnalysisEnabled = 'ai.weekly_analysis.enabled';
@@ -76,6 +82,10 @@ enum Feature: string
             self::InstagramAutoPublishEnabled,
             self::BlogEnabled,
             self::CitationEnabled,
+            self::AioMonitoringEnabled,
+            self::AioContentSuggestionEnabled,
+            self::AioSchemaDiagnosisEnabled,
+            self::AioReportEnabled,
             self::AiDailyAnalysisEnabled,
             self::AiWeeklyAnalysisEnabled,
             self::AiImprovementProposalsEnabled,

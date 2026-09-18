@@ -20,6 +20,10 @@ use Illuminate\Database\Seeder;
  * term plans take their entitlements from, so they are the catalogue's memory
  * of what MEO PREMIUM and the Instagram tier grant.
  *
+ * A contract term is not only a longer commitment at a lower rate. A MEO
+ * PREMIUM term adds the AIO block, which no monthly tier carries, and an IG
+ * LINE term's monthly Instagram allowance grows with its length.
+ *
  * `price` is the amount of one charge in JPY, not a monthly figure: ¥384,000
  * billed yearly, ¥210,000 charged once. The month the customer is committed
  * for is `billing_period_months`, and `phases` is how many charges make that
@@ -56,14 +60,19 @@ class PlanSeeder extends Seeder
      * is built from — a two-year term is two phases at ¥324,000, not one
      * charge of ¥648,000.
      *
+     * `ig_posts` is the monthly Instagram allowance that term of IG LINE
+     * carries. It is the one entitlement a term changes: a longer commitment
+     * buys more posts a month, 4 on the one-year term up to 30 on the
+     * five-year one.
+     *
      * @var array<string, array<string, mixed>>
      */
     protected const TERMS = [
-        '1y' => ['label' => '1年', 'months' => 12, 'phases' => 1, 'interval' => Plan::INTERVAL_YEAR, 'meo' => 384000, 'ig_line' => 180000, 'sort' => 10],
-        '2y' => ['label' => '2年', 'months' => 24, 'phases' => 2, 'interval' => Plan::INTERVAL_YEAR, 'meo' => 324000, 'ig_line' => 156000, 'sort' => 20],
-        '3y' => ['label' => '3年', 'months' => 36, 'phases' => 3, 'interval' => Plan::INTERVAL_YEAR, 'meo' => 300000, 'ig_line' => 132000, 'sort' => 30],
-        '5y' => ['label' => '5年', 'months' => 60, 'phases' => 5, 'interval' => Plan::INTERVAL_YEAR, 'meo' => 252000, 'ig_line' => 108000, 'sort' => 40],
-        '6m' => ['label' => '6ヶ月特例', 'months' => 6, 'phases' => 1, 'interval' => Plan::INTERVAL_ONE_TIME, 'meo' => 210000, 'ig_line' => null, 'sort' => 50],
+        '1y' => ['label' => '1年', 'months' => 12, 'phases' => 1, 'interval' => Plan::INTERVAL_YEAR, 'meo' => 384000, 'ig_line' => 180000, 'ig_posts' => 4, 'sort' => 10],
+        '2y' => ['label' => '2年', 'months' => 24, 'phases' => 2, 'interval' => Plan::INTERVAL_YEAR, 'meo' => 324000, 'ig_line' => 156000, 'ig_posts' => 12, 'sort' => 20],
+        '3y' => ['label' => '3年', 'months' => 36, 'phases' => 3, 'interval' => Plan::INTERVAL_YEAR, 'meo' => 300000, 'ig_line' => 132000, 'ig_posts' => 20, 'sort' => 30],
+        '5y' => ['label' => '5年', 'months' => 60, 'phases' => 5, 'interval' => Plan::INTERVAL_YEAR, 'meo' => 252000, 'ig_line' => 108000, 'ig_posts' => 30, 'sort' => 40],
+        '6m' => ['label' => '6ヶ月特例', 'months' => 6, 'phases' => 1, 'interval' => Plan::INTERVAL_ONE_TIME, 'meo' => 210000, 'ig_line' => null, 'ig_posts' => null, 'sort' => 50],
     ];
 
     /**
@@ -229,11 +238,11 @@ class PlanSeeder extends Seeder
      * The annual catalogue: MEO PREMIUM and IG LINE, each on the terms they
      * are sold on.
      *
-     * Every MEO PREMIUM term unlocks exactly what MEO PREMIUM unlocks and
-     * every IG LINE term exactly what the Instagram tier unlocks — the term
-     * buys the same product for longer at a lower rate per month, and nothing
-     * about the entitlements changes with it. Giving the terms their own
-     * feature values would be nine places for one matrix to drift.
+     * Every MEO PREMIUM term unlocks what monthly MEO PREMIUM unlocks plus the
+     * AIO block, which is sold only on a contract term; every IG LINE term
+     * unlocks what the Instagram tier unlocks, with the monthly post allowance
+     * the term buys. Both take their values from one place rather than
+     * restating them, so the matrix cannot drift across nine rows.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -254,7 +263,7 @@ class PlanSeeder extends Seeder
                     'trial_days' => 0,
                     'sort_order' => $term['sort'] + 100,
                     'is_active' => true,
-                    'features' => $this->meoFeatures(Plan::TIER_PREMIUM),
+                    'features' => $this->meoPremiumTermFeatures(),
                 ],
                 ...$term['ig_line'] === null ? [] : [[
                     'code' => 'ig_line_'.$suffix,
@@ -269,7 +278,7 @@ class PlanSeeder extends Seeder
                     'trial_days' => 0,
                     'sort_order' => $term['sort'] + 200,
                     'is_active' => true,
-                    'features' => $this->instagramFeatures(),
+                    'features' => $this->instagramFeatures($term['ig_posts']),
                 ]],
             ])
             ->all();
@@ -299,20 +308,47 @@ class PlanSeeder extends Seeder
     /**
      * The Instagram feature set, shared by IG PREMIUM and every IG LINE term.
      *
+     * The monthly post allowance is the argument because it is what a term
+     * buys: IG PREMIUM and the five-year term are both 30, the shorter terms
+     * less. Nothing MEO is listed, so FeatureResolver answers false or zero
+     * for every MEO key — an IG LINE customer buys Instagram and not the
+     * ranking product.
+     *
      * LINE is in the name and not in the features: there is no LINE key in the
      * Feature enum and nothing in the application gates on one yet.
      *
      * @return array<string, int|bool|null>
      */
-    protected function instagramFeatures(): array
+    protected function instagramFeatures(int $postMonthlyLimit = 30): array
     {
         return [
             Feature::InstagramEnabled->value => true,
-            Feature::InstagramPostMonthlyLimit->value => 30,
+            Feature::InstagramPostMonthlyLimit->value => $postMonthlyLimit,
             Feature::InstagramAutoPublishEnabled->value => true,
             Feature::LocationLimit->value => 1,
             Feature::BrandLimit->value => 1,
             Feature::MemberLimit->value => 3,
+        ];
+    }
+
+    /**
+     * What a MEO PREMIUM contract term unlocks: the monthly PREMIUM matrix,
+     * plus the AIO block.
+     *
+     * The AIO keys are added here rather than in the matrix so that the
+     * retired monthly MEO PREMIUM row keeps granting exactly what the
+     * organization still sitting on it bought. AIO is sold on a term.
+     *
+     * @return array<string, int|bool|null>
+     */
+    protected function meoPremiumTermFeatures(): array
+    {
+        return [
+            ...$this->meoFeatures(Plan::TIER_PREMIUM),
+            Feature::AioMonitoringEnabled->value => true,
+            Feature::AioContentSuggestionEnabled->value => true,
+            Feature::AioSchemaDiagnosisEnabled->value => true,
+            Feature::AioReportEnabled->value => true,
         ];
     }
 

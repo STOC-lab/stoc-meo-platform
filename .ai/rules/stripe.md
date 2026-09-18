@@ -48,11 +48,22 @@ term plans take their features from MEO PREMIUM and from the Instagram tier
 rather than restating them, so deleting a retired row would take nine plans'
 entitlements with it.
 
-Every MEO PREMIUM term carries exactly the MEO PREMIUM entitlements and every IG
-LINE term exactly the Instagram ones. A term buys the same product for longer at
-a lower rate; nothing about what it unlocks changes with it. LINE is in the name
-and not in the features — there is no LINE key in the `Feature` enum and nothing
-gates on one.
+A MEO PREMIUM term carries the MEO PREMIUM entitlements **plus the AIO block** —
+`aio.monitoring.enabled`, `aio.content_suggestion.enabled`,
+`aio.schema_diagnosis.enabled`, `aio.report.enabled`. AIO is sold on a contract
+term and on nothing else: the retired monthly MEO PREMIUM row does not carry it,
+so the organization still sitting on that row keeps granting exactly what it
+bought. That is why the keys are added in `meoPremiumTermFeatures()` and not as
+a PREMIUM column in the MEO matrix.
+
+An IG LINE term carries the Instagram tier's entitlements, with the monthly post
+allowance its term buys: 4 on the one-year, 12 on the two-year, 20 on the
+three-year, 30 on the five-year — which is the one entitlement a term changes.
+Retired IG PREMIUM keeps its 30. Nothing MEO is listed on an IG LINE row, so
+`FeatureResolver` answers false or zero for every MEO key.
+
+LINE is in the name and not in the features — there is no LINE key in the
+`Feature` enum and nothing gates on one.
 
 ## Creating the prices: `stripe:create-products`
 

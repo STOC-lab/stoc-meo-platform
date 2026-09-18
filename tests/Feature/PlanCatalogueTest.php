@@ -120,22 +120,57 @@ class PlanCatalogueTest extends TestCase
         $this->assertStringContainsString('月額換算 ¥9,000', (string) Plan::where('code', 'ig_line_5y')->value('description'));
     }
 
-    public function test_every_meo_premium_term_unlocks_what_meo_premium_unlocks(): void
+    public function test_every_meo_premium_term_unlocks_meo_premium_plus_aio(): void
     {
-        $premium = $this->resolver->features($this->organizationOn('meo_premium'))->sortKeys()->all();
+        $expected = $this->resolver->features($this->organizationOn('meo_premium'))->all() + [
+            Feature::AioMonitoringEnabled->value => true,
+            Feature::AioContentSuggestionEnabled->value => true,
+            Feature::AioSchemaDiagnosisEnabled->value => true,
+            Feature::AioReportEnabled->value => true,
+        ];
+        ksort($expected);
 
         foreach (['meo_premium_1y', 'meo_premium_2y', 'meo_premium_3y', 'meo_premium_5y', 'meo_premium_6m'] as $code) {
-            $this->assertSame($premium, $this->resolver->features($this->organizationOn($code))->sortKeys()->all(), $code);
+            $this->assertSame($expected, $this->resolver->features($this->organizationOn($code))->sortKeys()->all(), $code);
         }
     }
 
-    public function test_every_ig_line_term_unlocks_what_the_instagram_tier_unlocks(): void
+    public function test_aio_is_sold_on_a_term_and_not_on_a_monthly_tier(): void
     {
-        $premium = $this->resolver->features($this->organizationOn('ig_premium'))->sortKeys()->all();
+        // The organization still sitting on monthly MEO PREMIUM bought what
+        // that row granted; a term is what carries AIO.
+        foreach (['meo_free', 'meo_light', 'meo_standard', 'meo_premium', 'ig_premium', 'ig_line_5y'] as $code) {
+            $organization = $this->organizationOn($code);
 
-        foreach (['ig_line_1y', 'ig_line_2y', 'ig_line_3y', 'ig_line_5y'] as $code) {
-            $this->assertSame($premium, $this->resolver->features($this->organizationOn($code))->sortKeys()->all(), $code);
+            foreach ([Feature::AioMonitoringEnabled, Feature::AioContentSuggestionEnabled, Feature::AioSchemaDiagnosisEnabled, Feature::AioReportEnabled] as $feature) {
+                $this->assertFalse($this->resolver->allows($feature, $organization), "{$feature->value} on {$code}");
+            }
         }
+    }
+
+    public function test_every_ig_line_term_unlocks_the_instagram_tier_with_the_posts_its_term_buys(): void
+    {
+        $expected = $this->resolver->features($this->organizationOn('ig_premium'))->sortKeys()->all();
+
+        // The post allowance is the one entitlement a term changes.
+        foreach (['ig_line_1y' => 4, 'ig_line_2y' => 12, 'ig_line_3y' => 20, 'ig_line_5y' => 30] as $code => $posts) {
+            $this->assertSame(
+                [...$expected, Feature::InstagramPostMonthlyLimit->value => $posts],
+                $this->resolver->features($this->organizationOn($code))->sortKeys()->all(),
+                $code,
+            );
+        }
+    }
+
+    public function test_an_ig_line_term_grants_no_meo_feature(): void
+    {
+        $organization = $this->organizationOn('ig_line_5y');
+
+        foreach ([Feature::RankingEnabled, Feature::ReviewAiReplyEnabled, Feature::PdfReportEnabled, Feature::MultiLocationEnabled] as $feature) {
+            $this->assertFalse($this->resolver->allows($feature, $organization), $feature->value);
+        }
+
+        $this->assertFalse($this->resolver->allows(Feature::RankingKeywordLimit, $organization));
     }
 
     public function test_the_seeder_leaves_the_stripe_price_ids_alone(): void
