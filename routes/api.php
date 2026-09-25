@@ -64,6 +64,9 @@ Route::prefix('v1')
     ->group(function () {
         // Payment and cancellation are admin territory.
         Route::middleware('role:org_admin')->group(function () {
+            Route::get('billing/plans', [BillingController::class, 'plans'])
+                ->name('api.v1.billing.plans');
+
             Route::post('billing/checkout', [BillingController::class, 'checkout'])
                 ->name('api.v1.billing.checkout');
 

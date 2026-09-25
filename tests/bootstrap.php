@@ -25,6 +25,14 @@ require __DIR__.'/../vendor/autoload.php';
 $_ENV['APP_CONFIG_CACHE'] = $_SERVER['APP_CONFIG_CACHE'] = __DIR__.'/../bootstrap/cache/config.testing-never-written.php';
 putenv('APP_CONFIG_CACHE='.$_ENV['APP_CONFIG_CACHE']);
 
+/*
+ * The route cache is the same trap one step later: after `route:cache` the
+ * suite would test the routes the host last cached, not routes/, and a route
+ * added since answers 404.
+ */
+$_ENV['APP_ROUTES_CACHE'] = $_SERVER['APP_ROUTES_CACHE'] = __DIR__.'/../bootstrap/cache/routes.testing-never-written.php';
+putenv('APP_ROUTES_CACHE='.$_ENV['APP_ROUTES_CACHE']);
+
 $drivers = [
     'CACHE_STORE' => 'array',
     'SESSION_DRIVER' => 'array',

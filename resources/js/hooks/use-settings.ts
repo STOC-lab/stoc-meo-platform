@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import { keys } from '@/lib/query';
 import { useCurrentOrganization } from '@/stores/auth';
 import type {
+    BillingPlan,
     Brand,
     GbpConnection,
     Member,
@@ -205,6 +206,41 @@ export function useReports(locationId: number | null) {
             const { data } = await api.get<{ reports: ReportSummary[] }>(`/locations/${locationId}/reports`);
 
             return data.reports;
+        },
+    });
+}
+
+/** The plans the organization can move to from the billing tab. */
+export function useBillingPlans(enabled: boolean) {
+    const organization = useCurrentOrganization();
+
+    return useQuery({
+        queryKey: keys.billingPlans(organization?.id ?? null),
+        enabled: enabled && organization !== null,
+        // An administrator's screen; a member without the role gets a 403 and
+        // retrying will not change that.
+        retry: false,
+        queryFn: async (): Promise<BillingPlan[]> => {
+            const { data } = await api.get<{ plans: BillingPlan[] }>('/billing/plans');
+
+            return data.plans;
+        },
+    });
+}
+
+/**
+ * Open a Stripe Checkout session for a plan. The API hands back the URL, and
+ * the browser leaves for it; Stripe brings the customer back to the billing tab.
+ */
+export function useStartCheckout() {
+    return useMutation({
+        mutationFn: async (planCode: string) => {
+            const { data } = await api.post<{ url: string }>('/billing/checkout', { plan_code: planCode });
+
+            return data.url;
+        },
+        onSuccess: (url) => {
+            window.location.href = url;
         },
     });
 }

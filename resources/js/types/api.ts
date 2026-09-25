@@ -14,6 +14,24 @@ export interface PlanSummary {
     product: string;
 }
 
+/**
+ * A plan the organization can buy. `price` is one charge — the yearly amount
+ * on a yearly term — and `monthly_price` is what that works out to a month.
+ */
+export interface BillingPlan {
+    id: number;
+    code: string;
+    name: string;
+    product: string;
+    description: string | null;
+    price: number;
+    interval: 'month' | 'year';
+    monthly_price: number;
+    billing_period_months: number;
+    phases: number;
+    features: Record<string, number | boolean | string | null>;
+}
+
 export interface Organization {
     id: number;
     name: string;

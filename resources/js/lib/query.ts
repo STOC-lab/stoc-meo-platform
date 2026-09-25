@@ -51,4 +51,5 @@ export const keys = {
     competitors: (locationId: number | null) => ['competitors', locationId] as const,
     gbpConnection: (locationId: number | null) => ['gbp-connection', locationId] as const,
     reports: (locationId: number | null) => ['reports', locationId] as const,
+    billingPlans: (organizationId: number | null) => ['billing-plans', organizationId] as const,
 };

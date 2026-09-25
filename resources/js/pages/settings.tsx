@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { CreditCard, ExternalLink, Link2, Plus, Store, Users } from 'lucide-react';
+import { ArrowUpCircle, CreditCard, ExternalLink, Link2, Plus, Store, Users } from 'lucide-react';
 
 import { EmptyState, ErrorState, LoadingState, PageHeader } from '@/components/common/states';
 import { Badge } from '@/components/ui/badge';
@@ -21,16 +21,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/toast';
 import { useCurrentLocation, useLocations } from '@/hooks/use-locations';
 import {
+    useBillingPlans,
     useBrands,
     useConnectGoogle,
     useCreateLocation,
     useGbpConnection,
     useMembers,
     useReports,
+    useStartCheckout,
 } from '@/hooks/use-settings';
 import { api, errorMessage } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { useCurrentOrganization } from '@/stores/auth';
+import type { BillingPlan } from '@/types/api';
 
 const TABS = ['locations', 'members', 'connections', 'billing'] as const;
 
@@ -415,6 +418,7 @@ function BillingPanel() {
     const reports = useReports(location?.id ?? null);
     const [error, setError] = useState<unknown>(null);
     const [busy, setBusy] = useState(false);
+    const [choosingPlan, setChoosingPlan] = useState(false);
 
     async function openPortal() {
         setBusy(true);
@@ -448,14 +452,26 @@ function BillingPanel() {
                         </Badge>
                     </div>
 
-                    <Button className="w-fit" variant="outline" disabled={busy} onClick={openPortal}>
-                        <ExternalLink aria-hidden="true" />
-                        請求ポータルを開く
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                        <Button className="w-fit" onClick={() => setChoosingPlan(true)}>
+                            <ArrowUpCircle aria-hidden="true" />
+                            プランをアップグレード
+                        </Button>
+                        <Button className="w-fit" variant="outline" disabled={busy} onClick={openPortal}>
+                            <ExternalLink aria-hidden="true" />
+                            請求ポータルを開く
+                        </Button>
+                    </div>
 
                     {error ? <ErrorState error={error} /> : null}
                 </CardContent>
             </Card>
+
+            <PlanPickerDialog
+                open={choosingPlan}
+                onOpenChange={setChoosingPlan}
+                currentPlanCode={organization?.plan?.code ?? null}
+            />
 
             <Card>
                 <CardHeader>
@@ -499,6 +515,117 @@ function BillingPanel() {
                     )}
                 </CardContent>
             </Card>
+        </div>
+    );
+}
+
+const PRODUCT_LABELS: Record<string, string> = { meo: 'MEO', ig: 'Instagram' };
+
+function formatYen(amount: number): string {
+    return `¥${amount.toLocaleString('ja-JP')}`;
+}
+
+function formatTerm(months: number): string {
+    return months % 12 === 0 ? `${months / 12}年` : `${months}ヶ月`;
+}
+
+function PlanPickerDialog({
+    open,
+    onOpenChange,
+    currentPlanCode,
+}: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    currentPlanCode: string | null;
+}) {
+    const plans = useBillingPlans(open);
+    const checkout = useStartCheckout();
+    const products = [...new Set((plans.data ?? []).map((plan) => plan.product))];
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+                <DialogHeader>
+                    <DialogTitle>プランを選択</DialogTitle>
+                    <DialogDescription>お申し込み後、Stripe のお支払い画面に移動します。</DialogDescription>
+                </DialogHeader>
+
+                {plans.isPending ? (
+                    <LoadingState />
+                ) : plans.isError ? (
+                    <ErrorState error={plans.error} />
+                ) : products.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-muted-foreground">
+                        現在お申し込みいただけるプランはありません。
+                    </p>
+                ) : (
+                    products.map((product) => (
+                        <section key={product} className="flex flex-col gap-3">
+                            <h3 className="text-sm font-semibold">{PRODUCT_LABELS[product] ?? product}</h3>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                {plans.data!
+                                    .filter((plan) => plan.product === product)
+                                    .map((plan) => (
+                                        <PlanCard
+                                            key={plan.code}
+                                            plan={plan}
+                                            current={plan.code === currentPlanCode}
+                                            busy={checkout.isPending}
+                                            onChoose={() => checkout.mutate(plan.code)}
+                                        />
+                                    ))}
+                            </div>
+                        </section>
+                    ))
+                )}
+
+                {checkout.isError ? <ErrorState error={checkout.error} /> : null}
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function PlanCard({
+    plan,
+    current,
+    busy,
+    onChoose,
+}: {
+    plan: BillingPlan;
+    current: boolean;
+    busy: boolean;
+    onChoose: () => void;
+}) {
+    return (
+        <div className="flex flex-col gap-2 rounded-md border p-4 text-sm">
+            <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold">{plan.name}</span>
+                {current ? <Badge variant="success">ご利用中</Badge> : null}
+            </div>
+            <div>
+                <span className="text-lg font-semibold">
+                    {formatYen(plan.price)}
+                </span>
+                <span className="text-muted-foreground">{plan.interval === 'year' ? ' / 年' : ' / 月'}</span>
+            </div>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-muted-foreground">
+                {plan.interval === 'year' ? (
+                    <>
+                        <dt>月額換算</dt>
+                        <dd>{formatYen(plan.monthly_price)}</dd>
+                    </>
+                ) : null}
+                <dt>契約期間</dt>
+                <dd>{formatTerm(plan.billing_period_months)}</dd>
+            </dl>
+            {plan.phases > 1 ? (
+                <p className="text-xs text-muted-foreground">
+                    ※ 年払い×{plan.phases}回の自動更新です。途中解約は別途ご相談ください。
+                </p>
+            ) : null}
+            <Button className="mt-auto" disabled={busy || current} onClick={onChoose}>
+                このプランで申し込む
+            </Button>
         </div>
     );
 }

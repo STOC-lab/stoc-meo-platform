@@ -38,6 +38,58 @@ class BillingEndpointsTest extends TestCase
         return $user;
     }
 
+    public function test_an_admin_lists_the_plans_on_sale(): void
+    {
+        $this->plan->update(['is_active' => false]);
+        $twoYear = Plan::factory()->create([
+            'code' => 'meo_premium_2y',
+            'name' => 'MEO PREMIUM 2年',
+            'description' => 'MEO PREMIUM 2年契約。',
+            'price' => 324000,
+            'interval' => Plan::INTERVAL_YEAR,
+            'billing_period_months' => 24,
+            'phases' => 2,
+            'stripe_price_id' => 'price_2y',
+            'sort_order' => 20,
+        ]);
+        $twoYear->features()->createMany([
+            ['key' => 'ranking.keyword_limit', 'type' => 'limit', 'value' => '30'],
+            ['key' => 'aio.report.enabled', 'type' => 'boolean', 'value' => '1'],
+        ]);
+        Plan::factory()->create(['code' => 'meo_premium_1y', 'stripe_price_id' => 'price_1y', 'sort_order' => 10]);
+        Plan::factory()->create(['code' => 'meo_free', 'price' => 0, 'stripe_price_id' => null]);
+        Plan::factory()->create([
+            'code' => 'meo_premium_6m',
+            'interval' => Plan::INTERVAL_ONE_TIME,
+            'stripe_price_id' => 'price_6m',
+        ]);
+
+        $response = $this->actingAs($this->member('org_admin'))->getJson('/api/v1/billing/plans');
+
+        $response->assertOk();
+        $this->assertSame(['meo_premium_1y', 'meo_premium_2y'], $response->json('plans.*.code'));
+        $this->assertSame([
+            'id' => $twoYear->id,
+            'code' => 'meo_premium_2y',
+            'name' => 'MEO PREMIUM 2年',
+            'product' => 'meo',
+            'description' => 'MEO PREMIUM 2年契約。',
+            'price' => 324000,
+            'interval' => 'year',
+            'monthly_price' => 27000,
+            'billing_period_months' => 24,
+            'phases' => 2,
+            'features' => ['aio.report.enabled' => true, 'ranking.keyword_limit' => 30],
+        ], $response->json('plans.1'));
+    }
+
+    public function test_an_editor_cannot_list_the_plans_on_sale(): void
+    {
+        $this->actingAs($this->member('staff'))
+            ->getJson('/api/v1/billing/plans')
+            ->assertForbidden();
+    }
+
     public function test_an_admin_starts_a_checkout_session(): void
     {
         $this->mock(BillingService::class, function (MockInterface $mock) {
@@ -141,8 +193,9 @@ class BillingEndpointsTest extends TestCase
         $this->mock(BillingService::class, function (MockInterface $mock) {
             $mock->shouldReceive('portalUrl')
                 ->once()
+                // The portal's way back has to be a route the SPA has too.
                 ->withArgs(fn (Organization $organization, string $returnUrl) => $organization->is($this->organization)
-                    && str_contains($returnUrl, '/billing'))
+                    && $returnUrl === config('app.url').'/settings?tab=billing')
                 ->andReturn('https://billing.stripe.com/p/session/test123');
         });
 
