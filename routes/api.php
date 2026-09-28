@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\BillingController;
 use App\Http\Controllers\Api\V1\BrandController;
 use App\Http\Controllers\Api\V1\CompetitorController;
 use App\Http\Controllers\Api\V1\ContentCampaignController;
+use App\Http\Controllers\Api\V1\GbpConnectionController;
 use App\Http\Controllers\Api\V1\GbpPerformanceController;
 use App\Http\Controllers\Api\V1\GbpPostController;
 use App\Http\Controllers\Api\V1\GoogleConnectionController;
@@ -141,6 +142,18 @@ Route::prefix('v1')
 
             Route::get('auth/google/connection', [GoogleConnectionController::class, 'show'])
                 ->name('api.v1.auth.google.connection');
+
+            // After connecting, the administrator picks which Business Profile
+            // account and location the store front speaks for.
+            Route::get('gbp/accounts', [GbpConnectionController::class, 'accounts'])
+                ->name('api.v1.gbp.accounts.index');
+
+            Route::get('gbp/accounts/{accountId}/locations', [GbpConnectionController::class, 'locations'])
+                ->whereNumber('accountId')
+                ->name('api.v1.gbp.accounts.locations.index');
+
+            Route::post('gbp/connection/select', [GbpConnectionController::class, 'select'])
+                ->name('api.v1.gbp.connection.select');
         });
 
         // The Business Profile module. Reading what Google reported is open to

@@ -6,7 +6,9 @@ import { useCurrentOrganization } from '@/stores/auth';
 import type {
     BillingPlan,
     Brand,
+    GbpAccountOption,
     GbpConnection,
+    GbpLocationOption,
     Member,
     OrganizationInvitation,
     ReportSummary,
@@ -193,6 +195,60 @@ export function useConnectGoogle() {
         },
         onSuccess: (url) => {
             window.location.href = url;
+        },
+    });
+}
+
+/** The Business Profile accounts the connected Google user can act for. */
+export function useGbpAccounts(locationId: number | null, enabled: boolean) {
+    return useQuery({
+        queryKey: keys.gbpAccounts(locationId),
+        enabled: enabled && locationId !== null,
+        retry: false,
+        queryFn: async (): Promise<GbpAccountOption[]> => {
+            const { data } = await api.get<{ accounts: GbpAccountOption[] }>('/gbp/accounts', {
+                params: { location_id: locationId },
+            });
+
+            return data.accounts;
+        },
+    });
+}
+
+/** The locations under the chosen account. */
+export function useGbpLocations(locationId: number | null, accountId: string | null) {
+    return useQuery({
+        queryKey: keys.gbpLocations(locationId, accountId),
+        enabled: locationId !== null && accountId !== null,
+        retry: false,
+        queryFn: async (): Promise<GbpLocationOption[]> => {
+            const { data } = await api.get<{ locations: GbpLocationOption[] }>(`/gbp/accounts/${accountId}/locations`, {
+                params: { location_id: locationId },
+            });
+
+            return data.locations;
+        },
+    });
+}
+
+/**
+ * Store which account and location the store front speaks for. The account
+ * lands on the connection and the location on the store front, so both are
+ * refreshed.
+ */
+export function useSelectGbpLocation() {
+    const organization = useCurrentOrganization();
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (selection: { location_id: number; gbp_account_name: string; gbp_location_id: string }) => {
+            const { data } = await api.post('/gbp/connection/select', selection);
+
+            return data;
+        },
+        onSuccess: (_data, selection) => {
+            queryClient.invalidateQueries({ queryKey: keys.gbpConnection(selection.location_id) });
+            queryClient.invalidateQueries({ queryKey: keys.locations(organization?.id ?? null) });
         },
     });
 }

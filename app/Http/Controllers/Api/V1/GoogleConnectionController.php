@@ -10,6 +10,7 @@ use App\Services\GBP\GBPConnectionMonitor;
 use App\Support\Tenancy;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -80,27 +81,25 @@ class GoogleConnectionController extends Controller
     }
 
     /**
-     * Receive the grant and store the connection.
+     * Receive the grant, store the connection and send the browser back to the
+     * settings screen.
      *
      * This runs outside the tenant middleware — the browser arrives from
      * Google carrying nothing of ours but the state — so the organization
-     * comes from the state we put there ourselves.
+     * comes from the state we put there ourselves. The browser arrived by
+     * navigation rather than from the SPA, so every outcome is a redirect the
+     * settings screen reads, never JSON.
      */
-    public function callback(Request $request): JsonResponse
+    public function callback(Request $request): RedirectResponse
     {
         if (filled($request->query('error'))) {
-            return response()->json([
-                'message' => 'Googleとの連携がキャンセルされました。',
-                'reason' => (string) $request->query('error'),
-            ], 400);
+            return $this->backToSettings('error', 'Googleとの連携がキャンセルされました。');
         }
 
         $state = $this->consumeState((string) $request->query('state', ''));
 
         if ($state === null) {
-            return response()->json([
-                'message' => '連携リクエストの有効期限が切れています。もう一度お試しください。',
-            ], 422);
+            return $this->backToSettings('error', '連携リクエストの有効期限が切れています。もう一度お試しください。');
         }
 
         try {
@@ -123,23 +122,18 @@ class GoogleConnectionController extends Controller
                 'google_error' => $this->googleErrorFrom($e),
             ]);
 
-            return response()->json([
-                'message' => 'Googleからの応答を検証できませんでした。もう一度お試しください。',
-            ], 422);
+            return $this->backToSettings('error', 'Googleからの応答を検証できませんでした。もう一度お試しください。');
         }
 
         $location = Location::acrossTenants()->find($state['location_id']);
 
         if ($location === null) {
-            return response()->json(['message' => '対象の店舗が見つかりません。'], 404);
+            return $this->backToSettings('error', '対象の店舗が見つかりません。');
         }
 
-        $account = $this->store($location, $googleUser);
+        $this->store($location, $googleUser);
 
-        return response()->json([
-            'message' => 'Googleビジネスプロフィールと連携しました。',
-            'connection' => $this->present($account),
-        ]);
+        return $this->backToSettings('success');
     }
 
     /**
@@ -242,6 +236,20 @@ class GoogleConnectionController extends Controller
         Cache::forget($key);
 
         return is_array($payload) ? $payload : null;
+    }
+
+    /**
+     * The settings screen's connections tab, told how the round trip went.
+     */
+    protected function backToSettings(string $outcome, ?string $message = null): RedirectResponse
+    {
+        $query = array_filter([
+            'tab' => 'connections',
+            'google' => $outcome,
+            'message' => $message,
+        ]);
+
+        return redirect('/settings?'.http_build_query($query));
     }
 
     protected function stateKey(string $state): string

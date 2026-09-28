@@ -172,15 +172,14 @@ class GoogleConnectionTest extends TestCase
         $this->fakeSocialite();
         $state = $this->startConnection();
 
-        $this->getJson('/api/v1/auth/google/callback?code=auth-code&state='.$state)
-            ->assertOk()
-            ->assertJsonPath('connection.location_id', $this->location->id)
-            ->assertJsonPath('connection.google_email', 'owner@example.com')
-            ->assertJsonPath('connection.token_status', 'active')
-            ->assertJsonPath('connection.needs_reconnection', false);
+        $this->get('/api/v1/auth/google/callback?code=auth-code&state='.$state)
+            ->assertRedirect('/settings?tab=connections&google=success');
 
         $account = GbpAccount::acrossTenants()->firstOrFail();
 
+        $this->assertSame($this->location->id, $account->location_id);
+        $this->assertSame('owner@example.com', $account->google_email);
+        $this->assertSame(GbpTokenStatus::Active, $account->token_status);
         $this->assertSame('1029384756', $account->google_account_id);
         $this->assertSame('ya29.access-token', $account->accessToken());
         $this->assertSame('1//refresh-token', $account->refreshToken());
@@ -192,7 +191,7 @@ class GoogleConnectionTest extends TestCase
         $this->fakeSocialite();
         $state = $this->startConnection();
 
-        $this->getJson('/api/v1/auth/google/callback?code=auth-code&state='.$state)->assertOk();
+        $this->get('/api/v1/auth/google/callback?code=auth-code&state='.$state)->assertRedirect('/settings?tab=connections&google=success');
 
         $row = \DB::table('gbp_accounts')->first();
 
@@ -205,7 +204,7 @@ class GoogleConnectionTest extends TestCase
         $this->fakeSocialite();
         $state = $this->startConnection();
 
-        $response = $this->getJson('/api/v1/auth/google/callback?code=auth-code&state='.$state)->assertOk();
+        $response = $this->get('/api/v1/auth/google/callback?code=auth-code&state='.$state)->assertRedirect('/settings?tab=connections&google=success');
 
         $this->assertStringNotContainsString('ya29.access-token', $response->getContent());
         $this->assertStringNotContainsString('1//refresh-token', $response->getContent());
@@ -216,27 +215,30 @@ class GoogleConnectionTest extends TestCase
         $this->fakeSocialite();
         $state = $this->startConnection();
 
-        $this->getJson('/api/v1/auth/google/callback?code=auth-code&state='.$state)->assertOk();
+        $this->get('/api/v1/auth/google/callback?code=auth-code&state='.$state)->assertRedirect('/settings?tab=connections&google=success');
 
-        $this->getJson('/api/v1/auth/google/callback?code=auth-code&state='.$state)
-            ->assertStatus(422);
+        $this->get('/api/v1/auth/google/callback?code=auth-code&state='.$state)
+            ->assertRedirectContains('google=error');
 
         $this->assertSame(1, GbpAccount::acrossTenants()->count());
     }
 
     public function test_an_unknown_state_is_refused(): void
     {
-        $this->getJson('/api/v1/auth/google/callback?code=auth-code&state=made-up')
-            ->assertStatus(422);
+        $this->get('/api/v1/auth/google/callback?code=auth-code&state=made-up')
+            ->assertRedirectContains('google=error');
 
         $this->assertSame(0, GbpAccount::acrossTenants()->count());
     }
 
     public function test_a_declined_consent_is_reported_rather_than_stored(): void
     {
-        $this->getJson('/api/v1/auth/google/callback?error=access_denied&state=anything')
-            ->assertStatus(400)
-            ->assertJsonPath('reason', 'access_denied');
+        $this->get('/api/v1/auth/google/callback?error=access_denied&state=anything')
+            ->assertRedirect('/settings?'.http_build_query([
+                'tab' => 'connections',
+                'google' => 'error',
+                'message' => 'Googleとの連携がキャンセルされました。',
+            ]));
 
         $this->assertSame(0, GbpAccount::acrossTenants()->count());
     }
@@ -248,7 +250,7 @@ class GoogleConnectionTest extends TestCase
         $this->fakeSocialite();
         $state = $this->startConnection();
 
-        $this->getJson('/api/v1/auth/google/callback?code=auth-code&state='.$state)->assertOk();
+        $this->get('/api/v1/auth/google/callback?code=auth-code&state='.$state)->assertRedirect('/settings?tab=connections&google=success');
 
         $this->assertSame(1, GbpAccount::acrossTenants()->count());
 
@@ -273,7 +275,7 @@ class GoogleConnectionTest extends TestCase
         $this->fakeSocialite();
         $state = $this->startConnection();
 
-        $this->getJson('/api/v1/auth/google/callback?code=auth-code&state='.$state)->assertOk();
+        $this->get('/api/v1/auth/google/callback?code=auth-code&state='.$state)->assertRedirect('/settings?tab=connections&google=success');
 
         $this->assertSame(
             0,
@@ -289,7 +291,7 @@ class GoogleConnectionTest extends TestCase
         $this->fakeSocialite(refreshToken: null);
         $state = $this->startConnection();
 
-        $this->getJson('/api/v1/auth/google/callback?code=auth-code&state='.$state)->assertOk();
+        $this->get('/api/v1/auth/google/callback?code=auth-code&state='.$state)->assertRedirect('/settings?tab=connections&google=success');
 
         $this->assertSame('1//original', $existing->fresh()->refreshToken());
     }
@@ -362,8 +364,8 @@ class GoogleConnectionTest extends TestCase
 
         Log::spy();
 
-        $this->getJson('/api/v1/auth/google/callback?code=auth-code&state='.$state)
-            ->assertStatus(422);
+        $this->get('/api/v1/auth/google/callback?code=auth-code&state='.$state)
+            ->assertRedirectContains('google=error');
 
         Log::shouldHaveReceived('warning')->once()->withArgs(
             fn (string $message, array $context): bool => $message === 'Google connection callback failed.'
@@ -382,8 +384,8 @@ class GoogleConnectionTest extends TestCase
 
         Log::spy();
 
-        $this->getJson('/api/v1/auth/google/callback?code=auth-code&state='.$state)
-            ->assertStatus(422);
+        $this->get('/api/v1/auth/google/callback?code=auth-code&state='.$state)
+            ->assertRedirectContains('google=error');
 
         Log::shouldHaveReceived('warning')->once()->withArgs(
             fn (string $message, array $context): bool => $context['google_error'] === 'invalid_grant'
@@ -398,8 +400,8 @@ class GoogleConnectionTest extends TestCase
 
         Log::spy();
 
-        $this->getJson('/api/v1/auth/google/callback?code=auth-code&state='.$state)
-            ->assertStatus(422);
+        $this->get('/api/v1/auth/google/callback?code=auth-code&state='.$state)
+            ->assertRedirectContains('google=error');
 
         Log::shouldHaveReceived('warning')->once()->withArgs(
             fn (string $message, array $context): bool => $context['google_error'] === null

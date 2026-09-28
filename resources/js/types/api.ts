@@ -341,6 +341,21 @@ export interface GbpConnection {
     connected_at: string | null;
 }
 
+/** A Business Profile account the connected Google user can act for. */
+export interface GbpAccountOption {
+    name: string;
+    id: string;
+    account_name: string;
+    type: string | null;
+}
+
+/** A Business Profile location under one of those accounts. */
+export interface GbpLocationOption {
+    name: string;
+    title: string;
+    address: string | null;
+}
+
 export interface ReportSummary {
     id: number;
     period: string;

@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/toast';
@@ -25,15 +26,18 @@ import {
     useBrands,
     useConnectGoogle,
     useCreateLocation,
+    useGbpAccounts,
     useGbpConnection,
+    useGbpLocations,
     useMembers,
     useReports,
+    useSelectGbpLocation,
     useStartCheckout,
 } from '@/hooks/use-settings';
 import { api, errorMessage } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { useCurrentOrganization } from '@/stores/auth';
-import type { BillingPlan } from '@/types/api';
+import type { BillingPlan, GbpConnection, Location } from '@/types/api';
 
 const TABS = ['locations', 'members', 'connections', 'billing'] as const;
 
@@ -71,6 +75,34 @@ export default function Settings() {
             { replace: true },
         );
     }, [checkout, setParams, toast]);
+
+    // The Google consent screen returns here through the API's callback, with
+    // how it went. Same treatment as Checkout: say it once, then drop it.
+    const google = params.get('google');
+    const googleMessage = params.get('message');
+
+    useEffect(() => {
+        if (google === null) {
+            return;
+        }
+
+        if (google === 'success') {
+            toast('Googleと連携しました');
+        } else {
+            toast(googleMessage ?? 'Googleとの連携に失敗しました。', 'error');
+        }
+
+        setParams(
+            (current) => {
+                const next = new URLSearchParams(current);
+                next.delete('google');
+                next.delete('message');
+
+                return next;
+            },
+            { replace: true },
+        );
+    }, [google, googleMessage, setParams, toast]);
 
     function selectTab(value: string) {
         setParams(
@@ -394,6 +426,10 @@ function ConnectionsPanel() {
                     </Button>
 
                     {connect.isError ? <ErrorState error={connect.error} /> : null}
+
+                    {connection.data && !connection.data.needs_reconnection ? (
+                        <GbpProfilePicker location={location} connection={connection.data} />
+                    ) : null}
                 </CardContent>
             </Card>
 
@@ -408,6 +444,115 @@ function ConnectionsPanel() {
                     </p>
                 </CardContent>
             </Card>
+        </div>
+    );
+}
+
+/**
+ * Choose which Business Profile account and location the store front speaks
+ * for. Connecting only proves who the Google user is; nothing syncs until both
+ * are chosen.
+ */
+function GbpProfilePicker({ location, connection }: { location: Location; connection: GbpConnection }) {
+    const { toast } = useToast();
+    const accounts = useGbpAccounts(location.id, true);
+    const select = useSelectGbpLocation();
+
+    const [accountName, setAccountName] = useState<string | null>(connection.gbp_account_name);
+    const [gbpLocationId, setGbpLocationId] = useState<string | null>(location.gbp_location_id);
+
+    const accountId = accountName === null ? null : accountName.replace(/^accounts\//, '');
+    const locations = useGbpLocations(location.id, accountId);
+
+    function chooseAccount(value: string) {
+        setAccountName(value);
+        setGbpLocationId(null);
+    }
+
+    async function save() {
+        if (accountName === null || gbpLocationId === null) {
+            return;
+        }
+
+        try {
+            await select.mutateAsync({
+                location_id: location.id,
+                gbp_account_name: accountName,
+                gbp_location_id: gbpLocationId,
+            });
+            toast('連携するビジネスプロフィールを保存しました。');
+        } catch (exception) {
+            toast(errorMessage(exception, '保存に失敗しました。'), 'error');
+        }
+    }
+
+    return (
+        <div className="flex flex-col gap-3 border-t pt-4">
+            <p className="text-sm font-medium">連携するビジネスプロフィール</p>
+
+            {accounts.isPending ? (
+                <LoadingState />
+            ) : accounts.isError ? (
+                <ErrorState error={accounts.error} />
+            ) : accounts.data.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                    このGoogleアカウントで管理しているビジネスプロフィールが見つかりません。
+                </p>
+            ) : (
+                <>
+                    <div className="flex flex-col gap-2">
+                        <Label htmlFor="gbp-account">アカウント</Label>
+                        <Select value={accountName ?? undefined} onValueChange={chooseAccount}>
+                            <SelectTrigger id="gbp-account" className="w-full sm:w-96">
+                                <SelectValue placeholder="アカウントを選択" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {accounts.data.map((account) => (
+                                    <SelectItem key={account.name} value={account.name}>
+                                        {account.account_name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {accountId !== null ? (
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="gbp-location">ロケーション</Label>
+                            {locations.isPending ? (
+                                <LoadingState />
+                            ) : locations.isError ? (
+                                <ErrorState error={locations.error} />
+                            ) : locations.data.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">このアカウントにロケーションがありません。</p>
+                            ) : (
+                                <Select value={gbpLocationId ?? undefined} onValueChange={setGbpLocationId}>
+                                    <SelectTrigger id="gbp-location" className="w-full sm:w-96">
+                                        <SelectValue placeholder="ロケーションを選択" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {locations.data.map((option) => (
+                                            <SelectItem key={option.name} value={option.name}>
+                                                {option.address === null
+                                                    ? option.title
+                                                    : `${option.title}（${option.address}）`}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                        </div>
+                    ) : null}
+
+                    <Button
+                        className="w-fit"
+                        disabled={accountName === null || gbpLocationId === null || select.isPending}
+                        onClick={save}
+                    >
+                        保存
+                    </Button>
+                </>
+            )}
         </div>
     );
 }

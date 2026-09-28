@@ -50,6 +50,9 @@ export const keys = {
     alerts: (locationId: number | null) => ['alerts', locationId] as const,
     competitors: (locationId: number | null) => ['competitors', locationId] as const,
     gbpConnection: (locationId: number | null) => ['gbp-connection', locationId] as const,
+    gbpAccounts: (locationId: number | null) => ['gbp-accounts', locationId] as const,
+    gbpLocations: (locationId: number | null, accountId: string | null) =>
+        ['gbp-locations', locationId, accountId] as const,
     reports: (locationId: number | null) => ['reports', locationId] as const,
     billingPlans: (organizationId: number | null) => ['billing-plans', organizationId] as const,
 };

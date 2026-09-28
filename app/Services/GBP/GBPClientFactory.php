@@ -4,6 +4,7 @@ namespace App\Services\GBP;
 
 use App\Models\GbpAccount;
 use App\Models\Location;
+use App\Services\GBP\Clients\GBPAccountClient;
 use App\Services\GBP\Clients\GBPBusinessInfoClient;
 use App\Services\GBP\Clients\GBPClient;
 use App\Services\GBP\Clients\GBPLocalPostsClient;
@@ -28,6 +29,11 @@ class GBPClientFactory
         protected GBPTokenRefresher $tokens,
         protected GBPConnectionMonitor $monitor,
     ) {}
+
+    public function accounts(GbpAccount $account): GBPAccountClient
+    {
+        return $this->make(GBPAccountClient::class, $account);
+    }
 
     public function businessInfo(GbpAccount $account): GBPBusinessInfoClient
     {
