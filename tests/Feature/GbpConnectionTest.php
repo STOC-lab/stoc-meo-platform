@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 /**
@@ -195,5 +196,21 @@ class GbpConnectionTest extends TestCase
         $this->actingAs($this->member('org_admin'))
             ->getJson('/api/v1/gbp/accounts?location_id='.$this->location->id)
             ->assertStatus(502);
+    }
+
+    public function test_a_refusal_from_google_is_logged_with_its_reason(): void
+    {
+        Log::spy();
+        Http::fake(['mybusinessaccountmanagement.googleapis.com/*' => Http::response(['error' => ['message' => 'Quota exceeded']], 429)]);
+
+        $this->actingAs($this->member('org_admin'))
+            ->getJson('/api/v1/gbp/accounts?location_id='.$this->location->id)
+            ->assertStatus(502);
+
+        Log::shouldHaveReceived('error')->once()->withArgs(
+            fn (string $message, array $context): bool => $context['location_id'] === $this->location->id
+                && $context['transient'] === true
+                && str_contains($context['reason'], 'HTTP 429 Quota exceeded'),
+        );
     }
 }

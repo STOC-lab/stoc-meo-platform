@@ -12,6 +12,7 @@ use App\Services\GBP\GBPClientFactory;
 use App\Support\Tenancy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Choosing which Business Profile a connected store front speaks for.
@@ -107,7 +108,15 @@ class GbpConnectionController extends Controller
                 'message' => 'Googleビジネスプロフィールとの連携が切れています。再接続してください。',
                 'reconnect_required' => true,
             ], 409);
-        } catch (GBPException) {
+        } catch (GBPException $e) {
+            // The browser gets one sentence whatever Google said, so this log
+            // line is the only place the actual refusal survives.
+            Log::error('Business Profile lookup for the settings screen failed.', [
+                'location_id' => $location->getKey(),
+                'transient' => $e->isTransient(),
+                'reason' => $e->getMessage(),
+            ]);
+
             return response()->json([
                 'message' => 'Googleから情報を取得できませんでした。時間をおいて再度お試しください。',
             ], 502);
