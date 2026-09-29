@@ -354,6 +354,19 @@ export interface GbpConnection {
     connected_at: string | null;
 }
 
+/** A store front's connection to its Instagram professional account. */
+export interface InstagramConnection {
+    id: number;
+    location_id: number;
+    ig_user_id: string;
+    username: string | null;
+    token_status: 'active' | 'expired' | 'revoked';
+    token_status_label: string;
+    needs_reconnection: boolean;
+    token_expires_at: string | null;
+    connected_at: string | null;
+}
+
 /** A Business Profile account the connected Google user can act for. */
 export interface GbpAccountOption {
     name: string;

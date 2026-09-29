@@ -25,17 +25,19 @@ import {
     useBillingPlans,
     useBrands,
     useConnectGoogle,
+    useConnectInstagram,
     useCreateLocation,
     useGbpAccounts,
     useGbpConnection,
     useGbpLocations,
+    useInstagramConnection,
     useMembers,
     useReports,
     useSelectGbpLocation,
     useStartCheckout,
 } from '@/hooks/use-settings';
 import { api, errorMessage } from '@/lib/api';
-import { formatDateTime } from '@/lib/format';
+import { formatDate, formatDateTime } from '@/lib/format';
 import { useCurrentOrganization } from '@/stores/auth';
 import type { BillingPlan, GbpConnection, Location } from '@/types/api';
 
@@ -79,7 +81,7 @@ export default function Settings() {
     // The Google consent screen returns here through the API's callback, with
     // how it went. Same treatment as Checkout: say it once, then drop it.
     const google = params.get('google');
-    const googleMessage = params.get('message');
+    const callbackMessage = params.get('message');
 
     useEffect(() => {
         if (google === null) {
@@ -89,7 +91,7 @@ export default function Settings() {
         if (google === 'success') {
             toast('Googleと連携しました');
         } else {
-            toast(googleMessage ?? 'Googleとの連携に失敗しました。', 'error');
+            toast(callbackMessage ?? 'Googleとの連携に失敗しました。', 'error');
         }
 
         setParams(
@@ -102,7 +104,33 @@ export default function Settings() {
             },
             { replace: true },
         );
-    }, [google, googleMessage, setParams, toast]);
+    }, [google, callbackMessage, setParams, toast]);
+
+    // Instagram's consent screen comes back the same way.
+    const instagram = params.get('instagram');
+
+    useEffect(() => {
+        if (instagram === null) {
+            return;
+        }
+
+        if (instagram === 'success') {
+            toast('Instagramと連携しました');
+        } else {
+            toast(callbackMessage ?? 'Instagramとの連携に失敗しました。', 'error');
+        }
+
+        setParams(
+            (current) => {
+                const next = new URLSearchParams(current);
+                next.delete('instagram');
+                next.delete('message');
+
+                return next;
+            },
+            { replace: true },
+        );
+    }, [instagram, callbackMessage, setParams, toast]);
 
     function selectTab(value: string) {
         setParams(
@@ -433,18 +461,60 @@ function ConnectionsPanel() {
                 </CardContent>
             </Card>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>Instagram</CardTitle>
-                    <CardDescription>{location.name}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <p className="text-sm text-muted-foreground">
-                        Instagramの接続画面は未実装です。現在はアクセストークンを直接登録する運用となります。
-                    </p>
-                </CardContent>
-            </Card>
+            <InstagramConnectionCard location={location} />
         </div>
+    );
+}
+
+function InstagramConnectionCard({ location }: { location: Location }) {
+    const connection = useInstagramConnection(location.id);
+    const connect = useConnectInstagram();
+
+    return (
+        <Card>
+            <CardHeader>
+                <div className="flex items-center gap-2">
+                    <Link2 className="size-4 text-muted-foreground" aria-hidden="true" />
+                    <CardTitle>Instagram</CardTitle>
+                </div>
+                <CardDescription>{location.name}</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+                {connection.isPending ? (
+                    <LoadingState />
+                ) : connection.isError ? (
+                    <ErrorState error={connection.error} />
+                ) : connection.data === null ? (
+                    <p className="text-sm text-muted-foreground">まだ連携されていません。</p>
+                ) : (
+                    <div className="flex flex-col gap-2 text-sm">
+                        <div className="flex items-center gap-2">
+                            <Badge variant={connection.data.needs_reconnection ? 'destructive' : 'success'}>
+                                {connection.data.token_status_label}
+                            </Badge>
+                            <span className="text-muted-foreground">
+                                {connection.data.username ? `@${connection.data.username}` : connection.data.ig_user_id}
+                            </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            接続日: {formatDate(connection.data.connected_at)}
+                        </p>
+                    </div>
+                )}
+
+                <Button
+                    className="w-fit"
+                    variant={connection.data ? 'outline' : 'default'}
+                    disabled={connect.isPending}
+                    onClick={() => connect.mutate(location.id)}
+                >
+                    <ExternalLink aria-hidden="true" />
+                    {connection.data ? '再接続する' : 'Instagramと連携する'}
+                </Button>
+
+                {connect.isError ? <ErrorState error={connect.error} /> : null}
+            </CardContent>
+        </Card>
     );
 }
 

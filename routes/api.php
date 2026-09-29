@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\GbpPostController;
 use App\Http\Controllers\Api\V1\GoogleConnectionController;
 use App\Http\Controllers\Api\V1\HeatmapController;
 use App\Http\Controllers\Api\V1\ImprovementProposalController;
+use App\Http\Controllers\Api\V1\InstagramConnectionController;
 use App\Http\Controllers\Api\V1\InstagramPostController;
 use App\Http\Controllers\Api\V1\InvitationController;
 use App\Http\Controllers\Api\V1\KeywordController;
@@ -53,6 +54,12 @@ Route::prefix('v1')->group(function () {
         ->middleware('throttle:30,1')
         ->name('api.v1.auth.google.callback');
 
+    // Meta sends the browser back the same way, so the Instagram callback is
+    // public for the same reason.
+    Route::get('instagram/callback', [InstagramConnectionController::class, 'callback'])
+        ->middleware('throttle:30,1')
+        ->name('api.v1.instagram.callback');
+
     // The switcher needs the membership list before an organization can be
     // chosen, so these sit outside the tenant middleware.
     Route::middleware('auth:sanctum')->group(function () {
@@ -81,6 +88,16 @@ Route::prefix('v1')
         Route::middleware('role:viewer')->group(function () {
             Route::get('instagram/posts', [InstagramPostController::class, 'index'])
                 ->name('api.v1.instagram.posts.index');
+        });
+
+        // Connecting a store front to Instagram is an administrator's call,
+        // the same as Google.
+        Route::middleware('role:org_admin')->group(function () {
+            Route::get('instagram/connect', [InstagramConnectionController::class, 'connect'])
+                ->name('api.v1.instagram.connect');
+
+            Route::get('instagram/connection', [InstagramConnectionController::class, 'show'])
+                ->name('api.v1.instagram.connection');
         });
 
         // Rank tracking hangs off the store front rather than the

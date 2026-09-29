@@ -57,10 +57,26 @@ return [
     // Instagram publishing goes through Meta's Graph API. Publishing needs an
     // Instagram professional account linked to a Facebook page, and an image
     // at a URL Meta can fetch — it does not accept an upload.
+    //
+    // Connecting uses Instagram Login: the consent screen is on instagram.com,
+    // the code is traded at api.instagram.com, and the short-lived token that
+    // comes back is exchanged on graph.instagram.com for one that lasts about
+    // sixty days.
     'instagram' => [
         'base_url' => env('INSTAGRAM_BASE_URL', 'https://graph.facebook.com'),
         'version' => env('INSTAGRAM_API_VERSION', 'v21.0'),
         'timeout' => env('INSTAGRAM_TIMEOUT', 60),
+        'app_id' => env('INSTAGRAM_APP_ID'),
+        'app_secret' => env('INSTAGRAM_APP_SECRET'),
+        'redirect' => env('INSTAGRAM_REDIRECT_URI'),
+        'scopes' => [
+            'instagram_business_basic',
+            'instagram_business_manage_messages',
+            'instagram_business_manage_comments',
+        ],
+        'authorize_url' => env('INSTAGRAM_AUTHORIZE_URL', 'https://www.instagram.com/oauth/authorize'),
+        'token_url' => env('INSTAGRAM_TOKEN_URL', 'https://api.instagram.com/oauth/access_token'),
+        'graph_url' => env('INSTAGRAM_GRAPH_URL', 'https://graph.instagram.com'),
     ],
 
     'slack' => [

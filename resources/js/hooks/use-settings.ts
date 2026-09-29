@@ -8,6 +8,7 @@ import type {
     Brand,
     GbpAccountOption,
     GbpConnection,
+    InstagramConnection,
     GbpLocationOption,
     Member,
     OrganizationInvitation,
@@ -188,6 +189,37 @@ export function useConnectGoogle() {
     return useMutation({
         mutationFn: async (locationId: number) => {
             const { data } = await api.get<{ redirect_url: string }>('/auth/google/redirect', {
+                params: { location_id: locationId },
+            });
+
+            return data.redirect_url;
+        },
+        onSuccess: (url) => {
+            window.location.href = url;
+        },
+    });
+}
+
+export function useInstagramConnection(locationId: number | null) {
+    return useQuery({
+        queryKey: keys.instagramConnection(locationId),
+        enabled: locationId !== null,
+        queryFn: async (): Promise<InstagramConnection | null> => {
+            const { data } = await api.get<{ connection: InstagramConnection | null }>('/instagram/connection', {
+                params: { location_id: locationId },
+            });
+
+            return data.connection;
+        },
+        // An administrator's screen, the same as the Google connection.
+        retry: false,
+    });
+}
+
+export function useConnectInstagram() {
+    return useMutation({
+        mutationFn: async (locationId: number) => {
+            const { data } = await api.get<{ redirect_url: string }>('/instagram/connect', {
                 params: { location_id: locationId },
             });
 

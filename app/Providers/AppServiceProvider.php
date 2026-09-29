@@ -6,6 +6,7 @@ use App\Models\Organization;
 use App\Services\AI\AIProviderFactory;
 use App\Services\AI\ClaudeProvider;
 use App\Services\Instagram\InstagramClient;
+use App\Services\Instagram\InstagramOAuth;
 use App\Services\Ranking\DataForSEOProvider;
 use App\Services\Ranking\FallbackProvider;
 use App\Services\Ranking\RankProviderRouter;
@@ -37,6 +38,11 @@ class AppServiceProvider extends ServiceProvider
         $this->registerAiProviders();
 
         $this->app->singleton(InstagramClient::class, fn ($app) => new InstagramClient(
+            $app->make(HttpFactory::class),
+            (array) $app['config']->get('services.instagram', []),
+        ));
+
+        $this->app->singleton(InstagramOAuth::class, fn ($app) => new InstagramOAuth(
             $app->make(HttpFactory::class),
             (array) $app['config']->get('services.instagram', []),
         ));
