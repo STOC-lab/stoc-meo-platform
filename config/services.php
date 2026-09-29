@@ -58,25 +58,26 @@ return [
     // Instagram professional account linked to a Facebook page, and an image
     // at a URL Meta can fetch — it does not accept an upload.
     //
-    // Connecting uses Instagram Login: the consent screen is on instagram.com,
-    // the code is traded at api.instagram.com, and the short-lived token that
-    // comes back is exchanged on graph.instagram.com for one that lasts about
-    // sixty days.
+    // Connecting uses Facebook Login, not Instagram Login: the consent dialog
+    // is on facebook.com, the redirect URI is the one registered under
+    // Facebook Login for Business, and the code is traded on graph.facebook.com
+    // for a user token that reaches the account through its Page.
     'instagram' => [
         'base_url' => env('INSTAGRAM_BASE_URL', 'https://graph.facebook.com'),
-        'version' => env('INSTAGRAM_API_VERSION', 'v21.0'),
+        'version' => env('INSTAGRAM_API_VERSION', 'v26.0'),
         'timeout' => env('INSTAGRAM_TIMEOUT', 60),
         'app_id' => env('INSTAGRAM_APP_ID'),
         'app_secret' => env('INSTAGRAM_APP_SECRET'),
         'redirect' => env('INSTAGRAM_REDIRECT_URI'),
         'scopes' => [
-            'instagram_business_basic',
-            'instagram_business_manage_messages',
-            'instagram_business_manage_comments',
+            'instagram_basic',
+            'instagram_content_publish',
+            'instagram_manage_comments',
+            'instagram_manage_messages',
+            'pages_show_list',
+            'pages_read_engagement',
         ],
-        'authorize_url' => env('INSTAGRAM_AUTHORIZE_URL', 'https://www.instagram.com/oauth/authorize'),
-        'token_url' => env('INSTAGRAM_TOKEN_URL', 'https://api.instagram.com/oauth/access_token'),
-        'graph_url' => env('INSTAGRAM_GRAPH_URL', 'https://graph.instagram.com'),
+        'authorize_url' => env('INSTAGRAM_AUTHORIZE_URL', 'https://www.facebook.com'),
     ],
 
     'slack' => [
