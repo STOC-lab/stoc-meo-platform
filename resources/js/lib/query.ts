@@ -44,6 +44,8 @@ export const keys = {
     reviews: (locationId: number | null) => ['reviews', locationId] as const,
     gbpPosts: (locationId: number | null) => ['gbp-posts', locationId] as const,
     campaigns: (locationId: number | null) => ['campaigns', locationId] as const,
+    instagramPosts: (organizationId: number | null, page: number) =>
+        ['instagram-posts', organizationId, page] as const,
     meoScore: (locationId: number | null) => ['meo-score', locationId] as const,
     analyses: (locationId: number | null) => ['analyses', locationId] as const,
     proposals: (locationId: number | null) => ['proposals', locationId] as const,

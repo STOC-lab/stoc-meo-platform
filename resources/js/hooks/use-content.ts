@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
 import { keys } from '@/lib/query';
-import type { Allowance, Campaign, CampaignChannel, GbpPost } from '@/types/api';
+import { useCurrentOrganization } from '@/stores/auth';
+import type { Allowance, Campaign, CampaignChannel, GbpPost, InstagramPost, PageMeta } from '@/types/api';
 
 interface GbpPostsResponse {
     posts: GbpPost[];
@@ -120,5 +121,32 @@ export function useApproveCampaignPost(locationId: number | null) {
 export function useCancelCampaign(locationId: number | null) {
     return useCampaignMutation<number>(locationId, async (campaignId) => {
         await api.delete(`/locations/${locationId}/campaigns/${campaignId}`);
+    });
+}
+
+interface InstagramPostsResponse {
+    posts: InstagramPost[];
+    meta: PageMeta;
+    allowance: Allowance;
+    connected: boolean;
+}
+
+/**
+ * Instagram posts across every store front in the active organization, one
+ * page at a time.
+ */
+export function useInstagramPosts(page: number) {
+    const organization = useCurrentOrganization();
+    const organizationId = organization?.id ?? null;
+
+    return useQuery({
+        queryKey: keys.instagramPosts(organizationId, page),
+        enabled: organizationId !== null,
+        placeholderData: (previous) => previous,
+        queryFn: async (): Promise<InstagramPostsResponse> => {
+            const { data } = await api.get<InstagramPostsResponse>('/instagram/posts', { params: { page } });
+
+            return data;
+        },
     });
 }

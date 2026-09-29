@@ -195,6 +195,19 @@ export interface GbpPost {
 
 export type CampaignChannel = 'instagram' | 'gbp' | 'wordpress';
 
+/** A campaign's Instagram post, as the organization-wide list shows it. */
+export interface InstagramPost {
+    id: number;
+    campaign_id: number;
+    status: CampaignPostStatus;
+    status_label: string;
+    excerpt: string | null;
+    location: { id: number; name: string } | null;
+    posted_at: string | null;
+    published_at: string | null;
+    created_at: string | null;
+}
+
 export type CampaignPostStatus =
     | 'pending'
     | 'ai_generating'

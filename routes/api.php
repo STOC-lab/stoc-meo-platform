@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\GbpPostController;
 use App\Http\Controllers\Api\V1\GoogleConnectionController;
 use App\Http\Controllers\Api\V1\HeatmapController;
 use App\Http\Controllers\Api\V1\ImprovementProposalController;
+use App\Http\Controllers\Api\V1\InstagramPostController;
 use App\Http\Controllers\Api\V1\InvitationController;
 use App\Http\Controllers\Api\V1\KeywordController;
 use App\Http\Controllers\Api\V1\LocationController;
@@ -73,6 +74,13 @@ Route::prefix('v1')
 
             Route::get('billing/portal', [BillingController::class, 'portal'])
                 ->name('api.v1.billing.portal');
+        });
+
+        // Instagram posts across every store front in the organization, so
+        // the tenant middleware alone says whose they are.
+        Route::middleware('role:viewer')->group(function () {
+            Route::get('instagram/posts', [InstagramPostController::class, 'index'])
+                ->name('api.v1.instagram.posts.index');
         });
 
         // Rank tracking hangs off the store front rather than the

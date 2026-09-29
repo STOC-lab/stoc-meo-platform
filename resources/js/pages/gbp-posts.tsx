@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { Check, Plus, Sparkles } from 'lucide-react';
+import { Check, Link2, Plus, Sparkles } from 'lucide-react';
+import { Link } from 'react-router';
 
 import { GbpConnectionNotice, useGbpReadiness } from '@/components/common/gbp-connection-notice';
 import { EmptyState, ErrorState, LoadingState, PageHeader } from '@/components/common/states';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/components/ui/toast';
 import {
     useApproveCampaignPost,
     useCampaigns,
@@ -25,6 +28,7 @@ import {
     useCreateGbpPost,
     useGbpPosts,
     useGenerateCampaign,
+    useInstagramPosts,
 } from '@/hooks/use-content';
 import { useCurrentLocation } from '@/hooks/use-locations';
 import { errorMessage } from '@/lib/api';
@@ -75,6 +79,7 @@ export default function GbpPosts() {
                 <TabsList>
                     <TabsTrigger value="posts">GBP投稿</TabsTrigger>
                     <TabsTrigger value="campaigns">キャンペーン</TabsTrigger>
+                    <TabsTrigger value="instagram">Instagram</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="posts" className="flex flex-col gap-4">
@@ -84,6 +89,10 @@ export default function GbpPosts() {
 
                 <TabsContent value="campaigns">
                     <CampaignsPanel locationId={locationId} />
+                </TabsContent>
+
+                <TabsContent value="instagram">
+                    <InstagramPanel />
                 </TabsContent>
             </Tabs>
         </div>
@@ -437,5 +446,112 @@ function CampaignsPanel({ locationId }: { locationId: number | null }) {
                 </DialogContent>
             </Dialog>
         </Card>
+    );
+}
+
+/**
+ * Instagram posts across every store front. They are written through
+ * campaigns for now; the new-post button waits on the Meta connection flow.
+ */
+function InstagramPanel() {
+    const [page, setPage] = useState(1);
+    const posts = useInstagramPosts(page);
+    const { toast } = useToast();
+
+    const allowance = posts.data?.allowance;
+    const meta = posts.data?.meta;
+
+    return (
+        <div className="flex flex-col gap-4">
+            {posts.data && !posts.data.connected ? (
+                <Alert>
+                    <Link2 aria-hidden="true" />
+                    <AlertTitle>Instagramアカウントが連携されていません</AlertTitle>
+                    <AlertDescription>
+                        設定 → 外部連携から接続してください。
+                        <Button asChild size="sm" variant="outline" className="mt-2">
+                            <Link to="/settings">設定を開く</Link>
+                        </Button>
+                    </AlertDescription>
+                </Alert>
+            ) : null}
+
+            <Card>
+                <CardHeader>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                            <CardTitle>Instagram投稿</CardTitle>
+                            <CardDescription>
+                                {allowance
+                                    ? `今月 ${allowance.used} / ${allowance.limit ?? '無制限'} 件`
+                                    : 'すべての店舗のInstagram投稿'}
+                            </CardDescription>
+                        </div>
+                        <Button size="sm" onClick={() => toast('Instagram連携後に利用可能です', 'error')}>
+                            <Plus aria-hidden="true" />
+                            新規投稿
+                        </Button>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    {posts.isPending ? (
+                        <LoadingState />
+                    ) : posts.isError ? (
+                        <ErrorState error={posts.error} />
+                    ) : posts.data.posts.length === 0 ? (
+                        <p className="py-8 text-center text-sm text-muted-foreground">まだ投稿がありません。</p>
+                    ) : (
+                        <ul className="flex flex-col gap-3">
+                            {posts.data.posts.map((post) => (
+                                <li key={post.id} className="rounded-md border p-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <Badge variant={campaignStatusVariants[post.status]}>
+                                                {post.status_label}
+                                            </Badge>
+                                            {post.location ? (
+                                                <span className="text-xs text-muted-foreground">
+                                                    {post.location.name}
+                                                </span>
+                                            ) : null}
+                                        </div>
+                                        <span className="text-xs text-muted-foreground">
+                                            {formatDateTime(post.posted_at)}
+                                        </span>
+                                    </div>
+                                    <p className="mt-2 text-sm whitespace-pre-wrap">
+                                        {post.excerpt ?? <span className="text-muted-foreground">本文未作成</span>}
+                                    </p>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+
+                    {meta && meta.last_page > 1 ? (
+                        <div className="mt-4 flex items-center justify-between gap-2">
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={page <= 1 || posts.isFetching}
+                                onClick={() => setPage((current) => current - 1)}
+                            >
+                                前へ
+                            </Button>
+                            <span className="text-xs text-muted-foreground">
+                                {meta.current_page} / {meta.last_page}
+                            </span>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={page >= meta.last_page || posts.isFetching}
+                                onClick={() => setPage((current) => current + 1)}
+                            >
+                                次へ
+                            </Button>
+                        </div>
+                    ) : null}
+                </CardContent>
+            </Card>
+        </div>
     );
 }
