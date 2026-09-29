@@ -49,27 +49,25 @@ class InstagramConnectionTest extends TestCase
 
     /**
      * Answer the three calls the callback makes: code for a short-lived
-     * token, that for a long-lived one, and the Pages it can see.
-     *
-     * @param  array<int, array<string, mixed>>|null  $pages
+     * token, that for a long-lived one, and the profile.
      */
-    protected function fakeMeta(?array $pages = null): void
+    protected function fakeMeta(): void
     {
         Http::fake([
-            'graph.facebook.com/v26.0/oauth/access_token*' => function (Request $request) {
-                return ($request->data()['grant_type'] ?? null) === 'fb_exchange_token'
-                    ? Http::response(['access_token' => 'EAA-long-lived', 'token_type' => 'bearer', 'expires_in' => 5183944])
-                    : Http::response(['access_token' => 'EAA-short-lived', 'token_type' => 'bearer', 'expires_in' => 3600]);
-            },
-            'graph.facebook.com/v26.0/me/accounts*' => Http::response([
-                'data' => $pages ?? [
-                    ['id' => '1111', 'name' => 'Page without Instagram'],
-                    [
-                        'id' => '2222',
-                        'name' => 'STOC',
-                        'instagram_business_account' => ['id' => '17841400000000000', 'username' => 'stoc_co.ltd'],
-                    ],
-                ],
+            'api.instagram.com/oauth/access_token' => Http::response([
+                'access_token' => 'IGAA-short-lived',
+                'user_id' => 17841400000000000,
+                'permissions' => 'instagram_business_basic',
+            ]),
+            'graph.instagram.com/access_token*' => Http::response([
+                'access_token' => 'IGAA-long-lived',
+                'token_type' => 'bearer',
+                'expires_in' => 5183944,
+            ]),
+            'graph.instagram.com/v26.0/me*' => Http::response([
+                'user_id' => '17841400000000000',
+                'username' => 'stoc_co.ltd',
+                'id' => '9876543210',
             ]),
         ]);
     }
@@ -92,12 +90,12 @@ class InstagramConnectionTest extends TestCase
         $url = $response->json('redirect_url');
         parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
 
-        $this->assertStringStartsWith('https://www.facebook.com/v26.0/dialog/oauth?', $url);
+        $this->assertStringStartsWith('https://www.instagram.com/oauth/authorize?', $url);
         $this->assertSame('1698886537877170', $query['client_id']);
         $this->assertSame('https://app.test/api/v1/instagram/callback', $query['redirect_uri']);
         $this->assertSame('code', $query['response_type']);
         $this->assertSame(
-            'instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_messages,pages_show_list,pages_read_engagement',
+            'instagram_business_basic,instagram_business_manage_comments,instagram_business_manage_messages',
             $query['scope'],
         );
         $this->assertSame($response->json('state'), $query['state']);
@@ -132,7 +130,7 @@ class InstagramConnectionTest extends TestCase
             ->assertStatus(503);
     }
 
-    public function test_the_callback_stores_a_long_lived_token_and_the_pages_instagram_account(): void
+    public function test_the_callback_stores_a_long_lived_token_and_the_profile(): void
     {
         $this->fakeMeta();
         $state = $this->startConnection();
@@ -146,31 +144,18 @@ class InstagramConnectionTest extends TestCase
         $this->assertSame($this->organization->id, $account->organization_id);
         $this->assertSame('17841400000000000', $account->ig_user_id);
         $this->assertSame('stoc_co.ltd', $account->username);
-        $this->assertSame('EAA-long-lived', $account->accessToken());
+        $this->assertSame('IGAA-long-lived', $account->accessToken());
         $this->assertSame(InstagramTokenStatus::Active, $account->token_status);
         $this->assertTrue($account->token_expires_at->between(now()->addDays(59), now()->addDays(61)));
 
-        Http::assertSent(fn (Request $request) => str_starts_with($request->url(), 'https://graph.facebook.com/v26.0/oauth/access_token')
-            && ($request->data()['code'] ?? null) === 'auth-code'
-            && ($request->data()['redirect_uri'] ?? null) === 'https://app.test/api/v1/instagram/callback');
+        Http::assertSent(fn (Request $request) => $request->url() === 'https://api.instagram.com/oauth/access_token'
+            && $request['code'] === 'auth-code'
+            && $request['grant_type'] === 'authorization_code'
+            && $request['redirect_uri'] === 'https://app.test/api/v1/instagram/callback');
 
-        Http::assertSent(fn (Request $request) => str_starts_with($request->url(), 'https://graph.facebook.com/v26.0/oauth/access_token')
-            && ($request->data()['grant_type'] ?? null) === 'fb_exchange_token'
-            && ($request->data()['fb_exchange_token'] ?? null) === 'EAA-short-lived');
-
-        Http::assertSent(fn (Request $request) => str_starts_with($request->url(), 'https://graph.facebook.com/v26.0/me/accounts')
-            && ($request->data()['access_token'] ?? null) === 'EAA-long-lived');
-    }
-
-    public function test_a_login_granting_no_page_with_instagram_is_an_error(): void
-    {
-        $this->fakeMeta([['id' => '1111', 'name' => 'Page without Instagram']]);
-        $state = $this->startConnection();
-
-        $this->get('/api/v1/instagram/callback?code=auth-code&state='.$state)
-            ->assertRedirectContains('instagram=error');
-
-        $this->assertSame(0, InstagramAccount::acrossTenants()->count());
+        Http::assertSent(fn (Request $request) => str_starts_with($request->url(), 'https://graph.instagram.com/access_token')
+            && $request['grant_type'] === 'ig_exchange_token'
+            && $request['access_token'] === 'IGAA-short-lived');
     }
 
     public function test_the_stored_token_is_not_readable_in_the_database(): void
@@ -180,7 +165,7 @@ class InstagramConnectionTest extends TestCase
 
         $this->get('/api/v1/instagram/callback?code=auth-code&state='.$state);
 
-        $this->assertStringNotContainsString('EAA-long-lived', DB::table('instagram_accounts')->value('access_token_encrypted'));
+        $this->assertStringNotContainsString('IGAA-long-lived', DB::table('instagram_accounts')->value('access_token_encrypted'));
     }
 
     public function test_a_state_cannot_be_replayed(): void
@@ -219,12 +204,10 @@ class InstagramConnectionTest extends TestCase
     {
         Log::spy();
         Http::fake([
-            'graph.facebook.com/*' => Http::response([
-                'error' => [
-                    'message' => 'This authorization code has been used.',
-                    'type' => 'OAuthException',
-                    'code' => 100,
-                ],
+            'api.instagram.com/oauth/access_token' => Http::response([
+                'error_type' => 'OAuthException',
+                'code' => 400,
+                'error_message' => 'This authorization code has been used',
             ], 400),
         ]);
         $state = $this->startConnection();
@@ -251,7 +234,7 @@ class InstagramConnectionTest extends TestCase
         $account = InstagramAccount::acrossTenants()->sole();
 
         $this->assertSame($existing->id, $account->id);
-        $this->assertSame('EAA-long-lived', $account->accessToken());
+        $this->assertSame('IGAA-long-lived', $account->accessToken());
         $this->assertSame(InstagramTokenStatus::Active, $account->token_status);
     }
 

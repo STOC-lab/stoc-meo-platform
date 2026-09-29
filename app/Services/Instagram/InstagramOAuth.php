@@ -8,15 +8,13 @@ use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Response;
 
 /**
- * The Facebook Login round trip for the Instagram API: the consent URL, and
- * the calls that turn the code it hands back into a connection worth storing.
+ * The Instagram Login round trip: the consent URL, and the three calls that
+ * turn the code it hands back into a connection worth storing.
  *
- * Instagram is reached through a Facebook Page here, not through Instagram
- * Login. The code buys a short-lived user token, which is exchanged at once
- * for a long-lived one of about sixty days — the only one kept — and the
- * professional account is found as the one linked to a Page the person
- * manages. That long-lived user token is what InstagramClient publishes with
- * on graph.facebook.com.
+ * The code buys a token that lasts an hour. That one is exchanged at once for
+ * a long-lived token of about sixty days, which is the only one kept, and the
+ * profile is read with it so the settings screen can say which account was
+ * connected.
  */
 class InstagramOAuth
 {
@@ -40,22 +38,18 @@ class InstagramOAuth
 
     public function authorizationUrl(string $state): string
     {
-        return rtrim((string) $this->config['authorize_url'], '/').'/'.$this->version().'/dialog/oauth?'.http_build_query([
+        return $this->config['authorize_url'].'?'.http_build_query([
             'client_id' => $this->config['app_id'],
             'redirect_uri' => $this->config['redirect'],
             'response_type' => 'code',
             'scope' => implode(',', (array) ($this->config['scopes'] ?? [])),
             'state' => $state,
-            'display' => 'page',
-            // Walks someone whose Instagram account is not yet linked to a
-            // Page through linking it, instead of returning no account.
-            'extras' => json_encode(['setup' => ['channel' => 'IG_API_ONBOARDING']]),
         ]);
     }
 
     /**
-     * Trade the authorization code for a long-lived token and the Instagram
-     * professional account it can act for.
+     * Trade the authorization code for a long-lived token and the profile it
+     * belongs to.
      *
      * @return array{ig_user_id: string, username: string|null, access_token: string, expires_in: int|null}
      *
@@ -65,11 +59,11 @@ class InstagramOAuth
     {
         $shortLived = $this->exchangeCode($code);
         $longLived = $this->exchangeForLongLived($shortLived);
-        $account = $this->instagramAccount($longLived['access_token']);
+        $profile = $this->profile($longLived['access_token']);
 
         return [
-            'ig_user_id' => $account['id'],
-            'username' => $account['username'],
+            'ig_user_id' => $profile['user_id'],
+            'username' => $profile['username'],
             'access_token' => $longLived['access_token'],
             'expires_in' => $longLived['expires_in'],
         ];
@@ -80,14 +74,20 @@ class InstagramOAuth
      */
     protected function exchangeCode(string $code): string
     {
-        $response = $this->get('oauth/access_token', [
-            'client_id' => $this->config['app_id'],
-            'client_secret' => $this->config['app_secret'],
-            'redirect_uri' => $this->config['redirect'],
-            'code' => $code,
-        ]);
+        $response = $this->send(fn () => $this->http
+            ->asForm()
+            ->acceptJson()
+            ->timeout($this->timeout())
+            ->post((string) $this->config['token_url'], [
+                'client_id' => $this->config['app_id'],
+                'client_secret' => $this->config['app_secret'],
+                'grant_type' => 'authorization_code',
+                'redirect_uri' => $this->config['redirect'],
+                'code' => $code,
+            ]));
 
-        $token = $response->json('access_token');
+        // Meta has answered both flat and wrapped in `data` for this call.
+        $token = $response->json('access_token') ?? $response->json('data.0.access_token');
 
         if (! is_string($token) || $token === '') {
             throw InstagramException::for('the authorization code was not exchanged for a token');
@@ -103,12 +103,14 @@ class InstagramOAuth
      */
     protected function exchangeForLongLived(string $shortLivedToken): array
     {
-        $response = $this->get('oauth/access_token', [
-            'grant_type' => 'fb_exchange_token',
-            'client_id' => $this->config['app_id'],
-            'client_secret' => $this->config['app_secret'],
-            'fb_exchange_token' => $shortLivedToken,
-        ]);
+        $response = $this->send(fn () => $this->http
+            ->acceptJson()
+            ->timeout($this->timeout())
+            ->get($this->graphUrl('access_token'), [
+                'grant_type' => 'ig_exchange_token',
+                'client_secret' => $this->config['app_secret'],
+                'access_token' => $shortLivedToken,
+            ]));
 
         $token = $response->json('access_token');
 
@@ -125,66 +127,75 @@ class InstagramOAuth
     }
 
     /**
-     * The first Instagram professional account linked to a Page the person
-     * manages. Someone managing several is connected to the first for now;
-     * choosing between them is the settings screen's job once it exists.
+     * The professional account's id and username.
      *
-     * @return array{id: string, username: string|null}
+     * `user_id` is the Instagram account id that publishing addresses; `id` is
+     * scoped to the app, and is only the fallback.
+     *
+     * @return array{user_id: string, username: string|null}
      *
      * @throws InstagramException
      */
-    protected function instagramAccount(string $accessToken): array
+    protected function profile(string $accessToken): array
     {
-        $response = $this->get('me/accounts', [
-            'fields' => 'id,name,instagram_business_account{id,username}',
-            'access_token' => $accessToken,
-        ]);
+        $response = $this->send(fn () => $this->http
+            ->acceptJson()
+            ->timeout($this->timeout())
+            ->get($this->graphUrl($this->version().'/me'), [
+                'fields' => 'user_id,username',
+                'access_token' => $accessToken,
+            ]));
 
-        foreach ((array) $response->json('data', []) as $page) {
-            $account = $page['instagram_business_account'] ?? null;
+        $userId = $response->json('user_id') ?? $response->json('id');
 
-            if (is_array($account) && filled($account['id'] ?? null)) {
-                return [
-                    'id' => (string) $account['id'],
-                    'username' => is_string($account['username'] ?? null) ? $account['username'] : null,
-                ];
-            }
+        if (! is_scalar($userId) || (string) $userId === '') {
+            throw InstagramException::for('the account profile could not be read');
         }
 
-        throw InstagramException::for('no Facebook Page with a linked Instagram professional account was granted');
+        $username = $response->json('username');
+
+        return [
+            'user_id' => (string) $userId,
+            'username' => is_string($username) ? $username : null,
+        ];
     }
 
     /**
-     * @param  array<string, mixed>  $query
+     * @param  callable(): Response  $request
      *
      * @throws InstagramException
      */
-    protected function get(string $path, array $query): Response
+    protected function send(callable $request): Response
     {
         try {
-            $response = $this->http
-                ->baseUrl($this->graphUrl())
-                ->acceptJson()
-                ->timeout((int) ($this->config['timeout'] ?? 60))
-                ->get($path, $query);
+            $response = $request();
         } catch (ConnectionException $e) {
             throw InstagramException::for($e->getMessage());
         }
 
         if ($response->failed()) {
-            throw InstagramException::for('HTTP '.$response->status().' '.($response->json('error.message') ?? $response->reason()));
+            $message = $response->json('error_message')
+                ?? $response->json('error.message')
+                ?? $response->reason();
+
+            throw InstagramException::for('HTTP '.$response->status().' '.$message);
         }
 
         return $response;
     }
 
-    protected function graphUrl(): string
+    protected function graphUrl(string $path): string
     {
-        return rtrim((string) ($this->config['base_url'] ?? 'https://graph.facebook.com'), '/').'/'.$this->version();
+        return rtrim((string) $this->config['graph_url'], '/').'/'.ltrim($path, '/');
     }
 
     protected function version(): string
     {
-        return trim((string) ($this->config['version'] ?? 'v26.0'), '/');
+        return trim((string) ($this->config['version'] ?? 'v21.0'), '/');
+    }
+
+    protected function timeout(): int
+    {
+        return (int) ($this->config['timeout'] ?? 60);
     }
 }
