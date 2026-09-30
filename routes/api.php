@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\V1\InstagramPostController;
 use App\Http\Controllers\Api\V1\InvitationController;
 use App\Http\Controllers\Api\V1\KeywordController;
 use App\Http\Controllers\Api\V1\LocationController;
+use App\Http\Controllers\Api\V1\LocationGbpProtectionController;
 use App\Http\Controllers\Api\V1\MemberController;
 use App\Http\Controllers\Api\V1\MeoInsightController;
 use App\Http\Controllers\Api\V1\ReportController;
@@ -360,6 +361,14 @@ Route::prefix('v1')
                 Route::middleware('role:location_admin')->group(function () {
                     Route::match(['put', 'patch'], 'locations/{location}', [LocationController::class, 'update'])
                         ->name('api.v1.locations.update');
+
+                    // Holding the Business Profile to what the application
+                    // keeps is part of keeping the details current.
+                    Route::put('locations/{location}/gbp-protection', [LocationGbpProtectionController::class, 'store'])
+                        ->name('api.v1.locations.gbp-protection.store');
+
+                    Route::delete('locations/{location}/gbp-protection', [LocationGbpProtectionController::class, 'destroy'])
+                        ->name('api.v1.locations.gbp-protection.destroy');
                 });
 
                 // Adding or removing a store front changes what the

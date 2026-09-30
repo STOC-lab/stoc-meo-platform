@@ -25,6 +25,15 @@ Schedule::command('reports:generate-monthly')
     ->withoutOverlapping()
     ->onOneServer();
 
+// A protected store front's Business Profile is put back to what the
+// application holds before the day starts, so an edit made on Google's side
+// is not the one customers see for long.
+Schedule::command('gbp:sync-locations')
+    ->dailyAt('02:00')
+    ->timezone('Asia/Tokyo')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Reviews arrive at any hour, so they are pulled down nightly, after the rank
 // checks and before the day starts in the market they belong to.
 Schedule::command('gbp:sync-reviews')

@@ -46,6 +46,20 @@ class Location extends Model
     use BelongsToTenant, HasFactory, HasTenantSlug, SoftDeletes;
 
     /**
+     * The Business Profile fields protection holds to the snapshot, named by
+     * their path in Google's location resource.
+     *
+     * @var list<string>
+     */
+    public const GBP_PROTECTABLE_FIELDS = [
+        'title',
+        'phoneNumbers',
+        'websiteUri',
+        'regularHours',
+        'profile.description',
+    ];
+
+    /**
      * The column default lives in the database, but a model that has just been
      * created has to answer for itself before it is read back.
      *
@@ -69,6 +83,9 @@ class Location extends Model
             'latitude' => 'float',
             'longitude' => 'float',
             'is_active' => 'boolean',
+            'gbp_protected_fields' => 'array',
+            'gbp_canonical_data' => 'array',
+            'gbp_last_verified_at' => 'datetime',
         ];
     }
 
@@ -209,6 +226,15 @@ class Location extends Model
     public function isLinkedToGbp(): bool
     {
         return filled($this->gbp_location_id);
+    }
+
+    /**
+     * Whether any of the store front's Business Profile fields are held to
+     * the snapshot.
+     */
+    public function isGbpProtected(): bool
+    {
+        return ! empty($this->gbp_protected_fields);
     }
 
     /**

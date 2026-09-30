@@ -163,6 +163,25 @@ export function useUpdateLocation() {
     });
 }
 
+/**
+ * Switch Business Profile protection on or off. Switching on takes what Google
+ * holds right now as the version to keep.
+ */
+export function useToggleGbpProtection() {
+    const organization = useCurrentOrganization();
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async ({ id, enabled }: { id: number; enabled: boolean }) => {
+            const url = `/organizations/${organization!.id}/locations/${id}/gbp-protection`;
+            const { data } = enabled ? await api.put(url) : await api.delete(url);
+
+            return data;
+        },
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.locations(organization?.id ?? null) }),
+    });
+}
+
 /** The store front's Google connection, if it has one. */
 export function useGbpConnection(locationId: number | null) {
     return useQuery({

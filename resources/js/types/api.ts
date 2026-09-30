@@ -72,6 +72,10 @@ export interface Location {
     brand: { id: number; name: string; slug: string | null } | null;
     gbp_location_id: string | null;
     linked_to_gbp: boolean;
+    /** Whether the Business Profile is put back to the application's snapshot
+     *  every night. */
+    gbp_protected: boolean;
+    gbp_last_verified_at: string | null;
     website_url: string | null;
     phone: string | null;
     /** The address as one line, which is also what the GBP sync writes. */

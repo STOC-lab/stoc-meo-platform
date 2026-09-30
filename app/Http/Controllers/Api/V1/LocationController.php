@@ -188,6 +188,8 @@ class LocationController extends Controller
             'slug' => $location->slug,
             'gbp_location_id' => $location->gbp_location_id,
             'linked_to_gbp' => $location->isLinkedToGbp(),
+            'gbp_protected' => $location->isGbpProtected(),
+            'gbp_last_verified_at' => $location->gbp_last_verified_at?->toIso8601String(),
             'website_url' => $location->website_url,
             'phone' => $location->phone,
             'postal_code' => $location->postal_code,

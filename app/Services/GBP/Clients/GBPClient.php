@@ -76,6 +76,17 @@ abstract class GBPClient
     }
 
     /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     *
+     * @throws GBPException
+     */
+    protected function patch(string $path, array $payload = []): array
+    {
+        return $this->send('patch', $path, $payload);
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      *

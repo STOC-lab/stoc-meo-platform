@@ -40,4 +40,17 @@ class LocationFactory extends Factory
     {
         return $this->state(fn () => ['latitude' => null, 'longitude' => null]);
     }
+
+    /**
+     * A store front whose Business Profile is held to the given snapshot.
+     *
+     * @param  array<string, mixed>  $canonical
+     */
+    public function gbpProtected(array $canonical): static
+    {
+        return $this->state(fn () => [
+            'gbp_protected_fields' => Location::GBP_PROTECTABLE_FIELDS,
+            'gbp_canonical_data' => $canonical,
+        ]);
+    }
 }

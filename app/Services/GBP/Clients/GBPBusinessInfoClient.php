@@ -57,7 +57,7 @@ class GBPBusinessInfoClient extends GBPClient
      */
     public function updateLocation(string $locationName, array $attributes): array
     {
-        return $this->put(
+        return $this->patch(
             $this->locationPath($locationName).'?updateMask='.implode(',', array_keys($attributes)),
             $attributes,
         );

@@ -351,7 +351,9 @@ class GbpClientTest extends TestCase
             'websiteUri' => 'https://example.com',
         ]);
 
+        // Google's locations.patch answers only to PATCH.
         Http::assertSent(function ($request) {
+            $this->assertSame('PATCH', $request->method());
             $this->assertStringContainsString('updateMask=title,websiteUri', urldecode($request->url()));
 
             return true;

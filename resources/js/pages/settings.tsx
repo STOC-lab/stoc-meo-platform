@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/toast';
 import { useCurrentLocation, useLocations } from '@/hooks/use-locations';
@@ -35,6 +36,7 @@ import {
     useReports,
     useSelectGbpLocation,
     useStartCheckout,
+    useToggleGbpProtection,
 } from '@/hooks/use-settings';
 import { api, errorMessage } from '@/lib/api';
 import { formatDate, formatDateTime } from '@/lib/format';
@@ -177,6 +179,8 @@ function LocationsPanel() {
     const locations = useLocations();
     const brands = useBrands();
     const createLocation = useCreateLocation();
+    const toggleProtection = useToggleGbpProtection();
+    const { toast } = useToast();
 
     const [open, setOpen] = useState(false);
     const [form, setForm] = useState({ name: '', address: '', phone: '', latitude: '', longitude: '' });
@@ -196,6 +200,19 @@ function LocationsPanel() {
             setOpen(false);
         } catch {
             // The dialog stays open and shows the reason below.
+        }
+    }
+
+    async function setProtection(location: Location, enabled: boolean) {
+        try {
+            await toggleProtection.mutateAsync({ id: location.id, enabled });
+            toast(
+                enabled
+                    ? 'GBP情報の保護をオンにしました。現在のGoogle上の内容を正として毎晩確認します。'
+                    : 'GBP情報の保護をオフにしました。',
+            );
+        } catch (error) {
+            toast(errorMessage(error), 'error');
         }
     }
 
@@ -229,6 +246,7 @@ function LocationsPanel() {
                                     <TableHead>店舗名</TableHead>
                                     <TableHead>住所</TableHead>
                                     <TableHead className="w-28">GBP連携</TableHead>
+                                    <TableHead className="w-40">GBP情報を保護する</TableHead>
                                     <TableHead className="w-28">座標</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -245,6 +263,26 @@ function LocationsPanel() {
                                             ) : (
                                                 <Badge variant="secondary">未連携</Badge>
                                             )}
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex flex-col gap-1">
+                                                <Switch
+                                                    checked={location.gbp_protected}
+                                                    disabled={!location.linked_to_gbp || toggleProtection.isPending}
+                                                    onCheckedChange={(enabled) => setProtection(location, enabled)}
+                                                    aria-label={`${location.name}のGBP情報を保護する`}
+                                                    title={
+                                                        location.linked_to_gbp
+                                                            ? '店舗名・電話番号・ウェブサイト・営業時間・説明文がGoogle上で変更されたら元に戻します'
+                                                            : 'GBP連携後に設定できます'
+                                                    }
+                                                />
+                                                {location.gbp_protected && location.gbp_last_verified_at !== null && (
+                                                    <span className="text-xs text-muted-foreground">
+                                                        確認 {formatDateTime(location.gbp_last_verified_at)}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </TableCell>
                                         <TableCell>
                                             {location.has_coordinates ? (
